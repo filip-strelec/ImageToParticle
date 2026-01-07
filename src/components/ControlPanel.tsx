@@ -143,17 +143,17 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
             <Slider
               label="Friction"
               value={config.friction}
-              min={0.8}
-              max={0.99}
+              min={0.2}
+              max={0.98}
               step={0.01}
               onChange={(v) => onChange({ friction: v })}
             />
             <Slider
               label="Return Speed"
               value={config.returnSpeed}
-              min={0.01}
-              max={0.2}
-              step={0.01}
+              min={0.001}
+              max={0.3}
+              step={0.001}
               onChange={(v) => onChange({ returnSpeed: v })}
             />
             <Slider

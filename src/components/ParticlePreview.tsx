@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useMemo } from "react";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { ImageData, ParticleConfig, Particle } from "@/types";
 import { extractParticleData } from "@/utils/particleUtils";
 import { RotateCcw } from "lucide-react";
@@ -19,6 +19,7 @@ export default function ParticlePreview({ imageData, config, maskData }: Particl
   const frameCountRef = useRef<number>(0);
   const animationStartTimeRef = useRef<number>(0);
   const particlesActivatedRef = useRef<number>(0); // How many particles have been "shot" so far
+  const [particleCount, setParticleCount] = useState(0); // Track particle count for display
 
   // Extract particle data from image
   const particleData = useMemo(() => {
@@ -73,6 +74,9 @@ export default function ParticlePreview({ imageData, config, maskData }: Particl
         masked: p.masked,
       };
     });
+
+    // Update particle count for display
+    setParticleCount(particlesRef.current.length);
 
     // Reset animation
     if (config.enableInitialAnimation) {
@@ -312,7 +316,7 @@ export default function ParticlePreview({ imageData, config, maskData }: Particl
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <div className="p-3 border-b border-gray-800 flex items-center justify-between">
           <span className="text-sm text-gray-400">
-            {particlesRef.current.length.toLocaleString()} particles
+            {particleCount.toLocaleString()} particles
           </span>
           <div className="flex items-center gap-3">
             {config.enableInitialAnimation && (
