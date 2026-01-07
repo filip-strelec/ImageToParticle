@@ -5,31 +5,46 @@ import ImageUploader from "@/components/ImageUploader";
 import ParticlePreview from "@/components/ParticlePreview";
 import ControlPanel from "@/components/ControlPanel";
 import CodeExporter from "@/components/CodeExporter";
+import MaskingTool from "@/components/MaskingTool";
 import { ParticleConfig, ImageData } from "@/types";
 
 const defaultConfig: ParticleConfig = {
   resolution: 5,
   particleSize: 2,
+  minParticleSize: 1,
   sizeVariation: 1,
   friction: 0.92,
   returnSpeed: 0.08,
   mouseRadius: 100,
   mouseForce: 15,
+  mouseInteractionMode: "push",
+  orbitSpeed: 1.5,
+  turbulenceIntensity: 1.5,
   useOriginalColors: true,
   customColors: ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef"],
   alphaThreshold: 128,
   colorClustering: false,
   clusterCount: 8,
   maxParticles: 10000,
+  enableInitialAnimation: true,
+  particlesPerSecond: 2000,
+  shootingDirection: "top-to-bottom",
+  particleSpeed: 1,
+  enableBounce: false,
+  bounceIntensity: 1,
+  bounceDamping: 0.85,
+  mouseInteractionDuringAnimation: false,
 };
 
 export default function Home() {
   const [imageData, setImageData] = useState<ImageData | null>(null);
   const [config, setConfig] = useState<ParticleConfig>(defaultConfig);
-  const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+  const [activeTab, setActiveTab] = useState<"preview" | "mask" | "code">("preview");
+  const [maskData, setMaskData] = useState<Uint8ClampedArray | undefined>(undefined);
 
   const handleImageLoad = useCallback((data: ImageData) => {
     setImageData(data);
+    setMaskData(undefined); // Clear mask when new image is loaded
   }, []);
 
   const handleConfigChange = useCallback((newConfig: Partial<ParticleConfig>) => {
@@ -38,6 +53,10 @@ export default function Home() {
 
   const handleReset = useCallback(() => {
     setConfig(defaultConfig);
+  }, []);
+
+  const handleMaskChange = useCallback((newMaskData: Uint8ClampedArray) => {
+    setMaskData(newMaskData);
   }, []);
 
   return (
@@ -86,6 +105,16 @@ export default function Home() {
                   👁️ Preview
                 </button>
                 <button
+                  onClick={() => setActiveTab("mask")}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    activeTab === "mask"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  }`}
+                >
+                  🎭 Masking
+                </button>
+                <button
                   onClick={() => setActiveTab("code")}
                   className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                     activeTab === "code"
@@ -100,9 +129,11 @@ export default function Home() {
 
             {/* Content */}
             {activeTab === "preview" ? (
-              <ParticlePreview imageData={imageData} config={config} />
+              <ParticlePreview imageData={imageData} config={config} maskData={maskData} />
+            ) : activeTab === "mask" ? (
+              imageData && <MaskingTool imageData={imageData} onMaskChange={handleMaskChange} initialMaskData={maskData} />
             ) : (
-              <CodeExporter imageData={imageData} config={config} />
+              <CodeExporter imageData={imageData} config={config} maskData={maskData} />
             )}
           </div>
         </div>

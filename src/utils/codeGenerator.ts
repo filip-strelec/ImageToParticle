@@ -10,12 +10,13 @@ export function generateComponentCode(
     ? `import { PARTICLE_DATA } from "./particleData";\n` 
     : "";
 
-  const dataConst = mode === "inline" 
-    ? `\n// Particle positions and colors extracted from image\nconst PARTICLE_DATA: ParticleData[] = ${JSON.stringify(
-        particles.map(p => ({ x: Math.round(p.x), y: Math.round(p.y), c: p.color })),
-        null,
-        0
-      ).replace(/\{"x":/g, '{x:').replace(/,"y":/g, ',y:').replace(/,"c":/g, ',c:')};\n`
+  const dataConst = mode === "inline"
+    ? `\n// Particle positions and colors extracted from image\nconst PARTICLE_DATA: ParticleData[] = [\n${
+        particles.map(p => {
+          const obj = `{x:${Math.round(p.x)},y:${Math.round(p.y)},c:"${p.color}"${p.masked ? ',m:true' : ''}}`;
+          return `  ${obj}`;
+        }).join(',\n')
+      }\n];\n`
     : "";
 
   return `"use client";
@@ -26,6 +27,7 @@ interface ParticleData {
   x: number;
   y: number;
   c: string; // color
+  m?: boolean; // masked (won't interact with mouse)
 }
 
 interface Particle {
@@ -37,6 +39,7 @@ interface Particle {
   vy: number;
   size: number;
   color: string;
+  masked?: boolean;
 }
 
 interface ParticleAnimationProps {
@@ -97,8 +100,9 @@ export default function ParticleAnimation({
       originY: offsetY + p.y * scale,
       vx: 0,
       vy: 0,
-      size: ${config.particleSize} + Math.random() * ${config.sizeVariation},
+      size: Math.max(${config.minParticleSize}, ${config.particleSize} + Math.random() * ${config.sizeVariation}),
       color: p.c,
+      masked: p.m,
     }));
   }, []);
 
@@ -112,16 +116,19 @@ export default function ParticleAnimation({
     const colorGroups: Map<string, Particle[]> = new Map();
 
     for (const p of particlesRef.current) {
-      const dx = mouse.x - p.x;
-      const dy = mouse.y - p.y;
-      const distSq = dx * dx + dy * dy;
+      // Only apply mouse interaction if particle is not masked
+      if (!p.masked) {
+        const dx = mouse.x - p.x;
+        const dy = mouse.y - p.y;
+        const distSq = dx * dx + dy * dy;
 
-      if (distSq < mouseRadiusSq && distSq > 0) {
-        const dist = Math.sqrt(distSq);
-        const force = (mouseRadius - dist) / mouseRadius;
-        const angle = Math.atan2(dy, dx);
-        p.vx -= Math.cos(angle) * force * mouseForce;
-        p.vy -= Math.sin(angle) * force * mouseForce;
+        if (distSq < mouseRadiusSq && distSq > 0) {
+          const dist = Math.sqrt(distSq);
+          const force = (mouseRadius - dist) / mouseRadius;
+          const angle = Math.atan2(dy, dx);
+          p.vx -= Math.cos(angle) * force * mouseForce;
+          p.vy -= Math.sin(angle) * force * mouseForce;
+        }
       }
 
       p.vx += (p.originX - p.x) * returnSpeed;
@@ -214,6 +221,7 @@ export function generateParticleDataCode(particles: ParticleData[]): string {
     x: Math.round(p.x),
     y: Math.round(p.y),
     c: p.color,
+    ...(p.masked ? { m: true } : {})
   }));
 
   return `// Auto-generated particle data
@@ -223,12 +231,12 @@ export interface ParticleData {
   x: number;
   y: number;
   c: string;
+  m?: boolean;
 }
 
-export const PARTICLE_DATA: ParticleData[] = ${JSON.stringify(data, null, 0)
-    .replace(/\{"x":/g, '{x:')
-    .replace(/,"y":/g, ',y:')
-    .replace(/,"c":/g, ',c:')};
+export const PARTICLE_DATA: ParticleData[] = [
+${data.map(p => `  {x:${Math.round(p.x)},y:${Math.round(p.y)},c:"${p.c}"${p.m ? ',m:true' : ''}}`).join(',\n')}
+];
 `;
 }
 

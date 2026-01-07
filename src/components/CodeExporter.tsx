@@ -9,16 +9,17 @@ import { generateComponentCode, generateParticleDataCode } from "@/utils/codeGen
 interface CodeExporterProps {
   imageData: ImageData | null;
   config: ParticleConfig;
+  maskData?: Uint8ClampedArray;
 }
 
-export default function CodeExporter({ imageData, config }: CodeExporterProps) {
+export default function CodeExporter({ imageData, config, maskData }: CodeExporterProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<"inline" | "separate">("inline");
 
   const particleData = useMemo(() => {
     if (!imageData) return [];
-    return extractParticleData(imageData, config);
-  }, [imageData, config]);
+    return extractParticleData(imageData, config, maskData);
+  }, [imageData, config, maskData]);
 
   const componentCode = useMemo(() => {
     if (!imageData) return "";

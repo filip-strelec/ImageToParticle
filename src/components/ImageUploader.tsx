@@ -25,17 +25,29 @@ export default function ImageUploader({ onImageLoad }: ImageUploaderProps) {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
+
+        // Automatically downscale large images to prevent excessive particle counts
+        const MAX_DIMENSION = 800; // Max width or height
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          const scale = MAX_DIMENSION / Math.max(width, height);
+          width = Math.floor(width * scale);
+          height = Math.floor(height * scale);
+        }
+
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, width, height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
         onImageLoad({
-          width: img.width,
-          height: img.height,
+          width: canvas.width,
+          height: canvas.height,
           pixels: imageData.data,
           dataUrl,
           fileName: file.name,

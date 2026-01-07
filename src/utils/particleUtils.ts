@@ -5,7 +5,8 @@ import { ImageData, ParticleConfig, ParticleData } from "@/types";
  */
 export function extractParticleData(
   imageData: ImageData,
-  config: ParticleConfig
+  config: ParticleConfig,
+  maskData?: Uint8ClampedArray
 ): ParticleData[] {
   const { width, height, pixels } = imageData;
   const { resolution, alphaThreshold, maxParticles, useOriginalColors, customColors, colorClustering, clusterCount } = config;
@@ -19,6 +20,9 @@ export function extractParticleData(
   const particles: ParticleData[] = [];
   const gap = Math.max(1, resolution);
 
+  // First pass: collect all potential particles
+  const potentialParticles: ParticleData[] = [];
+
   for (let y = 0; y < height; y += gap) {
     for (let x = 0; x < width; x += gap) {
       const index = (y * width + x) * 4;
@@ -29,6 +33,9 @@ export function extractParticleData(
 
       // Skip transparent pixels
       if (a < alphaThreshold) continue;
+
+      // Check if this pixel is masked
+      const isMasked = maskData ? maskData[index] < 128 : false;
 
       // Determine color
       let color: string;
@@ -43,13 +50,19 @@ export function extractParticleData(
         color = customColors[Math.floor(Math.random() * customColors.length)];
       }
 
-      particles.push({ x, y, color });
-
-      // Early exit if we hit max particles
-      if (particles.length >= maxParticles) {
-        return particles;
-      }
+      potentialParticles.push({ x, y, color, masked: isMasked });
     }
+  }
+
+  // If we have more particles than the limit, sample evenly across the image
+  if (potentialParticles.length > maxParticles) {
+    const step = potentialParticles.length / maxParticles;
+    for (let i = 0; i < maxParticles; i++) {
+      const index = Math.floor(i * step);
+      particles.push(potentialParticles[index]);
+    }
+  } else {
+    return potentialParticles;
   }
 
   return particles;

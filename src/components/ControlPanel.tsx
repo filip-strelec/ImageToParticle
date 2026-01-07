@@ -1,7 +1,7 @@
 "use client";
 
-import { Settings, RotateCcw, Palette, Zap, MousePointer } from "lucide-react";
-import { ParticleConfig, ImageData } from "@/types";
+import { Settings, RotateCcw, Palette, Zap, MousePointer, Sparkles } from "lucide-react";
+import { ParticleConfig, ImageData, ShootingDirection, MouseInteractionMode } from "@/types";
 import { useMemo } from "react";
 
 interface ControlPanelProps {
@@ -90,6 +90,15 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
               suffix="px"
             />
             <Slider
+              label="Min Particle Size"
+              value={config.minParticleSize}
+              min={0.5}
+              max={5}
+              step={0.5}
+              onChange={(v) => onChange({ minParticleSize: v })}
+              suffix="px"
+            />
+            <Slider
               label="Size Variation"
               value={config.sizeVariation}
               min={0}
@@ -117,6 +126,20 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
             <MousePointer className="w-4 h-4" /> Physics & Interaction
           </h3>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm text-gray-400">Mouse Interaction Mode</label>
+              <select
+                value={config.mouseInteractionMode}
+                onChange={(e) => onChange({ mouseInteractionMode: e.target.value as MouseInteractionMode })}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="push">Push Away</option>
+                <option value="pull">Pull Toward</option>
+                <option value="orbit">Orbital Motion</option>
+                <option value="turbulence">Turbulence</option>
+              </select>
+            </div>
+
             <Slider
               label="Friction"
               value={config.friction}
@@ -149,6 +172,126 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
               max={30}
               onChange={(v) => onChange({ mouseForce: v })}
             />
+
+            {config.mouseInteractionMode === "orbit" && (
+              <Slider
+                label="Orbit Speed"
+                value={config.orbitSpeed}
+                min={0.5}
+                max={3}
+                step={0.1}
+                onChange={(v) => onChange({ orbitSpeed: v })}
+                suffix="x"
+              />
+            )}
+
+            {config.mouseInteractionMode === "turbulence" && (
+              <Slider
+                label="Turbulence Intensity"
+                value={config.turbulenceIntensity}
+                min={0.5}
+                max={3}
+                step={0.1}
+                onChange={(v) => onChange({ turbulenceIntensity: v })}
+                suffix="x"
+              />
+            )}
+          </div>
+        </section>
+
+        {/* Animation Section */}
+        <section>
+          <h3 className="text-sm font-medium text-indigo-400 mb-3 flex items-center gap-2">
+            <Sparkles className="w-4 h-4" /> Initial Animation
+          </h3>
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.enableInitialAnimation}
+                onChange={(e) => onChange({ enableInitialAnimation: e.target.checked })}
+                className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+              />
+              <span className="text-sm text-gray-300">Enable sequential shooting animation</span>
+            </label>
+
+            {config.enableInitialAnimation && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400">Shooting Direction</label>
+                  <select
+                    value={config.shootingDirection}
+                    onChange={(e) => onChange({ shootingDirection: e.target.value as ShootingDirection })}
+                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="top-to-bottom">Top to Bottom</option>
+                    <option value="all-directions">All Directions (Center Out)</option>
+                  </select>
+                </div>
+
+                <Slider
+                  label="Particles Per Second"
+                  value={config.particlesPerSecond}
+                  min={100}
+                  max={10000}
+                  step={100}
+                  onChange={(v) => onChange({ particlesPerSecond: v })}
+                  suffix="/s"
+                />
+
+                <Slider
+                  label="Particle Speed"
+                  value={config.particleSpeed}
+                  min={0.5}
+                  max={3}
+                  step={0.1}
+                  onChange={(v) => onChange({ particleSpeed: v })}
+                  suffix="x"
+                />
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.enableBounce}
+                    onChange={(e) => onChange({ enableBounce: e.target.checked })}
+                    className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+                  />
+                  <span className="text-sm text-gray-300">Add bounce effect</span>
+                </label>
+
+                {config.enableBounce && (
+                  <>
+                    <Slider
+                      label="Bounce Intensity"
+                      value={config.bounceIntensity}
+                      min={0.5}
+                      max={2}
+                      step={0.1}
+                      onChange={(v) => onChange({ bounceIntensity: v })}
+                    />
+
+                    <Slider
+                      label="Bounce Damping"
+                      value={config.bounceDamping}
+                      min={0.7}
+                      max={0.95}
+                      step={0.01}
+                      onChange={(v) => onChange({ bounceDamping: v })}
+                    />
+                  </>
+                )}
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.mouseInteractionDuringAnimation}
+                    onChange={(e) => onChange({ mouseInteractionDuringAnimation: e.target.checked })}
+                    className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+                  />
+                  <span className="text-sm text-gray-300">Mouse interaction during animation</span>
+                </label>
+              </>
+            )}
           </div>
         </section>
 
