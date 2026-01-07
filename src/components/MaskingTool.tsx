@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ImageData } from "@/types";
+import type { ImageData as ImageDataType } from "@/types";
 import { Eraser, Trash2, Eye, EyeOff, Paintbrush, ZoomIn } from "lucide-react";
 
 interface MaskingToolProps {
-  imageData: ImageData;
+  imageData: ImageDataType;
   onMaskChange: (maskData: Uint8ClampedArray) => void;
   initialMaskData?: Uint8ClampedArray;
 }
@@ -46,7 +46,9 @@ export default function MaskingTool({ imageData, onMaskChange, initialMaskData }
     if (maskCtx) {
       if (initialMaskData) {
         // Restore existing mask data
-        const maskImageData = new window.ImageData(initialMaskData, maskCanvas.width, maskCanvas.height);
+        // Create a new Uint8ClampedArray from the data to ensure proper type
+        const clampedArray = new Uint8ClampedArray(initialMaskData);
+        const maskImageData = new ImageData(clampedArray, maskCanvas.width, maskCanvas.height);
         maskCtx.putImageData(maskImageData, 0, 0);
       } else {
         // Clear mask (white = unmasked)
