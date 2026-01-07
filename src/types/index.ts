@@ -35,6 +35,9 @@ export interface ImageData {
   pixels: Uint8ClampedArray;
   dataUrl: string;
   fileName: string;
+  originalWidth: number;  // Original image dimensions before scaling
+  originalHeight: number;
+  canvasScale: number;    // Scale factor applied to canvas
 }
 
 export interface Particle {

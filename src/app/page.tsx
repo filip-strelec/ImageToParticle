@@ -41,6 +41,7 @@ export default function Home() {
   const [config, setConfig] = useState<ParticleConfig>(defaultConfig);
   const [activeTab, setActiveTab] = useState<"preview" | "mask" | "code">("preview");
   const [maskData, setMaskData] = useState<Uint8ClampedArray | undefined>(undefined);
+  const [canvasScale, setCanvasScale] = useState(1);
 
   const handleImageLoad = useCallback((data: ImageData) => {
     setImageData(data);
@@ -57,6 +58,11 @@ export default function Home() {
 
   const handleMaskChange = useCallback((newMaskData: Uint8ClampedArray) => {
     setMaskData(newMaskData);
+  }, []);
+
+  const handleCanvasScaleChange = useCallback((scale: number) => {
+    setCanvasScale(scale);
+    setMaskData(undefined); // Clear mask when scale changes (dimensions change)
   }, []);
 
   return (
@@ -77,7 +83,11 @@ export default function Home() {
         <div className="grid lg:grid-cols-[350px_1fr] gap-6">
           {/* Left Sidebar - Controls */}
           <div className="space-y-6">
-            <ImageUploader onImageLoad={handleImageLoad} />
+            <ImageUploader
+              onImageLoad={handleImageLoad}
+              canvasScale={canvasScale}
+              onCanvasScaleChange={handleCanvasScaleChange}
+            />
             
             {imageData && (
               <ControlPanel

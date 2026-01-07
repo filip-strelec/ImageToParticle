@@ -77,24 +77,25 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
               value={config.resolution}
               min={1}
               max={20}
+              step={1}
               onChange={(v) => onChange({ resolution: v })}
               suffix="px"
             />
             <Slider
               label="Particle Size"
               value={config.particleSize}
-              min={0.5}
+              min={0.2}
               max={10}
-              step={0.5}
+              step={0.2}
               onChange={(v) => onChange({ particleSize: v })}
               suffix="px"
             />
             <Slider
               label="Min Particle Size"
               value={config.minParticleSize}
-              min={0.5}
+              min={0.2}
               max={5}
-              step={0.5}
+              step={0.2}
               onChange={(v) => onChange({ minParticleSize: v })}
               suffix="px"
             />
