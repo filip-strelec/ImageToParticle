@@ -26,7 +26,7 @@ const defaultConfig: ParticleConfig = {
   colorClustering: false,
   clusterCount: 8,
   maxParticles: 10000,
-  enableInitialAnimation: true,
+  enableInitialAnimation: false,
   particlesPerSecond: 2000,
   shootingDirection: "top-to-bottom",
   particleSpeed: 1,

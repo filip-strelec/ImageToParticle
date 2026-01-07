@@ -24,6 +24,7 @@ export default function MaskingTool({ imageData, onMaskChange, initialMaskData }
   const lastPanPos = useRef({ x: 0, y: 0 });
   const scaleRef = useRef(1);
   const offsetRef = useRef({ x: 0, y: 0 });
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
 
   // Load image once
   useEffect(() => {
@@ -181,6 +182,16 @@ export default function MaskingTool({ imageData, onMaskChange, initialMaskData }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    // Update cursor position for brush indicator
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      setCursorPos({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+    }
+
     if (isPanning) {
       const dx = e.clientX - lastPanPos.current.x;
       const dy = e.clientY - lastPanPos.current.y;
@@ -192,6 +203,10 @@ export default function MaskingTool({ imageData, onMaskChange, initialMaskData }
     if (!isDrawing) return;
     const coords = getCanvasCoords(e.clientX, e.clientY);
     if (coords) drawMask(coords.x, coords.y);
+  };
+
+  const handleMouseLeave = () => {
+    setCursorPos(null);
   };
 
   const handleMouseUp = () => {
@@ -223,15 +238,36 @@ export default function MaskingTool({ imageData, onMaskChange, initialMaskData }
         </p>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        className={`w-full h-[400px] ${isPanning ? 'cursor-grab' : 'cursor-crosshair'}`}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onContextMenu={(e) => e.preventDefault()}
-      />
+      <div className="relative">
+        <canvas
+          ref={canvasRef}
+          className={`w-full h-[400px] ${isPanning ? 'cursor-grab' : 'cursor-crosshair'}`}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={(e) => {
+            handleMouseUp();
+            handleMouseLeave();
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        />
+
+        {/* Brush size indicator */}
+        {cursorPos && !isPanning && (
+          <div
+            className="pointer-events-none absolute rounded-full border-2"
+            style={{
+              left: cursorPos.x,
+              top: cursorPos.y,
+              width: brushSize * 2,
+              height: brushSize * 2,
+              transform: 'translate(-50%, -50%)',
+              borderColor: toolMode === "draw" ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.8)',
+              backgroundColor: toolMode === "draw" ? 'rgba(99, 102, 241, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            }}
+          />
+        )}
+      </div>
 
       <div className="p-4 space-y-3 border-t border-gray-800">
         {/* Tool Mode Toggle */}
