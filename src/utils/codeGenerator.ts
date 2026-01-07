@@ -1,13 +1,69 @@
 import { ParticleConfig, ParticleData, ImageData } from "@/types";
 
+function generateMouseInteractionCode(config: ParticleConfig): string {
+  switch (config.mouseInteractionMode) {
+    case "push":
+      return `          // Push particles away from mouse
+          p.vx -= Math.cos(angle) * force * CONFIG.mouseForce;
+          p.vy -= Math.sin(angle) * force * CONFIG.mouseForce;`;
+
+    case "pull":
+      return `          // Pull particles toward mouse
+          p.vx += Math.cos(angle) * force * CONFIG.mouseForce;
+          p.vy += Math.sin(angle) * force * CONFIG.mouseForce;`;
+
+    case "orbit":
+      return `          // Make particles orbit around mouse
+          const orbitAngle = angle + Math.PI / 2;
+          const orbitForce = force * CONFIG.mouseForce * CONFIG.orbitSpeed * 0.3;
+          p.vx += Math.cos(orbitAngle) * orbitForce;
+          p.vy += Math.sin(orbitAngle) * orbitForce;
+          // Slight pull toward mouse to maintain orbit
+          p.vx += Math.cos(angle) * force * CONFIG.mouseForce * 0.1;
+          p.vy += Math.sin(angle) * force * CONFIG.mouseForce * 0.1;`;
+
+    case "turbulence":
+      return `          // Create chaotic turbulent motion
+          const time = performance.now() * 0.001;
+          const turbulenceX = Math.sin(p.x * 0.01 + time * 2) * Math.cos(p.y * 0.01 + time);
+          const turbulenceY = Math.cos(p.x * 0.01 + time) * Math.sin(p.y * 0.01 + time * 1.5);
+          const turbulenceForce = force * CONFIG.mouseForce * CONFIG.turbulenceIntensity * 0.5;
+          p.vx += turbulenceX * turbulenceForce;
+          p.vy += turbulenceY * turbulenceForce;`;
+
+    default:
+      return `          // Push particles away from mouse (default)
+          p.vx -= Math.cos(angle) * force * CONFIG.mouseForce;
+          p.vy -= Math.sin(angle) * force * CONFIG.mouseForce;`;
+  }
+}
+
+function generatePhysicsCode(config: ParticleConfig): string {
+  if (config.enableBounce && config.enableInitialAnimation) {
+    return `        // Calculate physics with bounce effect
+        let returnSpeed = CONFIG.returnSpeed * CONFIG.particleSpeed;
+        let friction = CONFIG.friction;
+
+        // Apply bounce effect during animation
+        if (CONFIG.enableBounce && !isAnimationComplete) {
+          returnSpeed = CONFIG.returnSpeed * (0.1 / CONFIG.bounceIntensity);
+          friction = CONFIG.bounceDamping;
+        }`;
+  } else {
+    return `        // Calculate physics
+        const returnSpeed = CONFIG.returnSpeed * CONFIG.particleSpeed;
+        const friction = CONFIG.friction;`;
+  }
+}
+
 export function generateComponentCode(
   particles: ParticleData[],
   config: ParticleConfig,
   imageData: ImageData,
   mode: "inline" | "separate"
 ): string {
-  const dataImport = mode === "separate" 
-    ? `import { PARTICLE_DATA } from "./particleData";\n` 
+  const dataImport = mode === "separate"
+    ? `import { PARTICLE_DATA } from "./particleData";\n`
     : "";
 
   const dataConst = mode === "inline"
@@ -18,6 +74,12 @@ export function generateComponentCode(
         }).join(',\n')
       }\n];\n`
     : "";
+
+  // Generate mouse interaction mode code
+  const mouseInteractionCode = generateMouseInteractionCode(config);
+
+  // Generate physics code based on config
+  const physicsCode = generatePhysicsCode(config);
 
   return `"use client";
 
@@ -44,104 +106,141 @@ interface Particle {
 
 interface ParticleAnimationProps {
   className?: string;
-  friction?: number;
-  returnSpeed?: number;
-  mouseRadius?: number;
-  mouseForce?: number;
 }
 ${dataConst}
-// Original image dimensions: ${imageData.width}x${imageData.height}
+// Original image dimensions
 const IMG_WIDTH = ${imageData.width};
 const IMG_HEIGHT = ${imageData.height};
 
-export default function ParticleAnimation({
-  className = "",
-  friction = ${config.friction},
-  returnSpeed = ${config.returnSpeed},
-  mouseRadius = ${config.mouseRadius},
-  mouseForce = ${config.mouseForce},
-}: ParticleAnimationProps) {
+// Configuration
+const CONFIG = {
+  friction: ${config.friction},
+  returnSpeed: ${config.returnSpeed},
+  mouseRadius: ${config.mouseRadius},
+  mouseForce: ${config.mouseForce},
+  mouseInteractionMode: "${config.mouseInteractionMode}" as const,
+  orbitSpeed: ${config.orbitSpeed},
+  turbulenceIntensity: ${config.turbulenceIntensity},
+  particleSpeed: ${config.particleSpeed},
+  enableBounce: ${config.enableBounce},
+  bounceIntensity: ${config.bounceIntensity},
+  bounceDamping: ${config.bounceDamping},
+  enableInitialAnimation: ${config.enableInitialAnimation},
+  particlesPerSecond: ${config.particlesPerSecond},
+  shootingDirection: "${config.shootingDirection}" as const,
+  mouseInteractionDuringAnimation: ${config.mouseInteractionDuringAnimation},
+  particleSize: ${config.particleSize},
+  minParticleSize: ${config.minParticleSize},
+  sizeVariation: ${config.sizeVariation},
+};
+
+export default function ParticleAnimation({ className = "" }: ParticleAnimationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const mouseRef = useRef({ x: -1000, y: -1000 });
   const animationRef = useRef<number>(0);
-  const configRef = useRef({ friction, returnSpeed, mouseRadius, mouseForce });
+  const animationStartTimeRef = useRef<number>(0);
+  const particlesActivatedRef = useRef<number>(0);
 
-  // Update config ref when props change
-  useEffect(() => {
-    configRef.current = { friction, returnSpeed, mouseRadius, mouseForce };
-  }, [friction, returnSpeed, mouseRadius, mouseForce]);
+  const initParticles = useCallback(() => {
+    const centerX = IMG_WIDTH / 2;
+    const centerY = IMG_HEIGHT / 2;
 
-  const initParticles = useCallback((canvas: HTMLCanvasElement) => {
-    const rect = canvas.getBoundingClientRect();
-    const cssWidth = rect.width;
-    const cssHeight = rect.height;
-
-    // Calculate scale to fit image in canvas
-    const imgAspect = IMG_WIDTH / IMG_HEIGHT;
-    const canvasAspect = cssWidth / cssHeight;
-    
-    let scale: number, offsetX: number, offsetY: number;
-
-    if (imgAspect > canvasAspect) {
-      scale = (cssWidth * 0.9) / IMG_WIDTH;
-      offsetX = cssWidth * 0.05;
-      offsetY = (cssHeight - IMG_HEIGHT * scale) / 2;
-    } else {
-      scale = (cssHeight * 0.9) / IMG_HEIGHT;
-      offsetX = (cssWidth - IMG_WIDTH * scale) / 2;
-      offsetY = cssHeight * 0.05;
+    // Sort particles based on shooting direction
+    let sortedData = [...PARTICLE_DATA];
+    if (CONFIG.enableInitialAnimation) {
+      if (CONFIG.shootingDirection === "top-to-bottom") {
+        sortedData.sort((a, b) => a.y - b.y);
+      } else if (CONFIG.shootingDirection === "all-directions") {
+        sortedData.sort((a, b) => {
+          const distA = Math.sqrt(Math.pow(a.x - centerX, 2) + Math.pow(a.y - centerY, 2));
+          const distB = Math.sqrt(Math.pow(b.x - centerX, 2) + Math.pow(b.y - centerY, 2));
+          return distA - distB;
+        });
+      }
     }
 
-    particlesRef.current = PARTICLE_DATA.map(p => ({
-      x: offsetX + p.x * scale,
-      y: offsetY + p.y * scale,
-      originX: offsetX + p.x * scale,
-      originY: offsetY + p.y * scale,
-      vx: 0,
-      vy: 0,
-      size: Math.max(${config.minParticleSize}, ${config.particleSize} + Math.random() * ${config.sizeVariation}),
-      color: p.c,
-      masked: p.m,
-    }));
+    particlesRef.current = sortedData.map(p => {
+      const startX = CONFIG.enableInitialAnimation ? centerX : p.x;
+      const startY = CONFIG.enableInitialAnimation ? centerY : p.y;
+
+      return {
+        x: startX,
+        y: startY,
+        originX: p.x,
+        originY: p.y,
+        vx: 0,
+        vy: 0,
+        size: Math.max(CONFIG.minParticleSize, CONFIG.particleSize + Math.random() * CONFIG.sizeVariation),
+        color: p.c,
+        masked: p.m,
+      };
+    });
+
+    // Reset animation
+    animationStartTimeRef.current = performance.now();
+    particlesActivatedRef.current = CONFIG.enableInitialAnimation ? 0 : particlesRef.current.length;
   }, []);
 
-  const animate = useCallback((ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
-    const { friction, returnSpeed, mouseRadius, mouseForce } = configRef.current;
+  const animate = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const mouse = mouseRef.current;
-    const mouseRadiusSq = mouseRadius * mouseRadius;
+    const mouseRadiusSq = CONFIG.mouseRadius * CONFIG.mouseRadius;
+    const particleCount = particlesRef.current.length;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Update activated particles count for sequential animation
+    if (CONFIG.enableInitialAnimation && particlesActivatedRef.current < particleCount) {
+      const elapsed = (performance.now() - animationStartTimeRef.current) / 1000;
+      particlesActivatedRef.current = Math.min(Math.floor(elapsed * CONFIG.particlesPerSecond), particleCount);
+    }
 
+    const isAnimationComplete = particlesActivatedRef.current >= particleCount;
+
+    // Separate masked and non-masked particles for z-index layering
     const colorGroups: Map<string, Particle[]> = new Map();
+    const maskedColorGroups: Map<string, Particle[]> = new Map();
 
-    for (const p of particlesRef.current) {
-      // Only apply mouse interaction if particle is not masked
-      if (!p.masked) {
+    for (let i = 0; i < particlesRef.current.length; i++) {
+      const p = particlesRef.current[i];
+      const isActivated = i < particlesActivatedRef.current;
+
+      // Apply mouse interaction
+      const allowMouseInteraction = isAnimationComplete || CONFIG.mouseInteractionDuringAnimation;
+      if (!p.masked && allowMouseInteraction && isActivated) {
         const dx = mouse.x - p.x;
         const dy = mouse.y - p.y;
         const distSq = dx * dx + dy * dy;
 
         if (distSq < mouseRadiusSq && distSq > 0) {
           const dist = Math.sqrt(distSq);
-          const force = (mouseRadius - dist) / mouseRadius;
+          const force = (CONFIG.mouseRadius - dist) / CONFIG.mouseRadius;
           const angle = Math.atan2(dy, dx);
-          p.vx -= Math.cos(angle) * force * mouseForce;
-          p.vy -= Math.sin(angle) * force * mouseForce;
+
+${mouseInteractionCode}
         }
       }
 
-      p.vx += (p.originX - p.x) * returnSpeed;
-      p.vy += (p.originY - p.y) * returnSpeed;
-      p.vx *= friction;
-      p.vy *= friction;
-      p.x += p.vx;
-      p.y += p.vy;
+      // Only move activated particles
+      if (isActivated) {
+${physicsCode}
 
-      if (!colorGroups.has(p.color)) colorGroups.set(p.color, []);
-      colorGroups.get(p.color)!.push(p);
+        p.vx += (p.originX - p.x) * returnSpeed;
+        p.vy += (p.originY - p.y) * returnSpeed;
+        p.vx *= friction;
+        p.vy *= friction;
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Separate masked and non-masked for layering
+        const targetMap = p.masked ? maskedColorGroups : colorGroups;
+        if (!targetMap.has(p.color)) targetMap.set(p.color, []);
+        targetMap.get(p.color)!.push(p);
+      }
     }
 
+    // Clear and render
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw non-masked particles first (bottom layer)
     for (const [color, particles] of colorGroups) {
       ctx.fillStyle = color;
       ctx.globalAlpha = 0.85;
@@ -152,9 +251,21 @@ export default function ParticleAnimation({
       }
       ctx.fill();
     }
-    ctx.globalAlpha = 1;
 
-    animationRef.current = requestAnimationFrame(() => animate(ctx, canvas));
+    // Draw masked particles on top (highest z-index)
+    for (const [color, particles] of maskedColorGroups) {
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      for (const p of particles) {
+        ctx.moveTo(p.x + p.size, p.y);
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = 1;
+    animationRef.current = requestAnimationFrame(() => animate(ctx, width, height));
   }, []);
 
   useEffect(() => {
@@ -163,18 +274,22 @@ export default function ParticleAnimation({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const handleResize = () => {
-      const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      initParticles(canvas);
-    };
+    // Set canvas size to match image dimensions
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = IMG_WIDTH * dpr;
+    canvas.height = IMG_HEIGHT * dpr;
+    ctx.scale(dpr, dpr);
+
+    initParticles();
 
     const getCoords = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect();
-      return { x: clientX - rect.left, y: clientY - rect.top };
+      const scaleX = IMG_WIDTH / rect.width;
+      const scaleY = IMG_HEIGHT / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -188,16 +303,13 @@ export default function ParticleAnimation({
       if (touch) mouseRef.current = getCoords(touch.clientX, touch.clientY);
     };
 
-    handleResize();
-    window.addEventListener("resize", handleResize);
     canvas.addEventListener("mousemove", handleMouseMove);
     canvas.addEventListener("mouseleave", handleMouseLeave);
     canvas.addEventListener("touchmove", handleTouchMove);
 
-    animationRef.current = requestAnimationFrame(() => animate(ctx, canvas));
+    animationRef.current = requestAnimationFrame(() => animate(ctx, IMG_WIDTH, IMG_HEIGHT));
 
     return () => {
-      window.removeEventListener("resize", handleResize);
       canvas.removeEventListener("mousemove", handleMouseMove);
       canvas.removeEventListener("mouseleave", handleMouseLeave);
       canvas.removeEventListener("touchmove", handleTouchMove);
@@ -205,11 +317,20 @@ export default function ParticleAnimation({
     };
   }, [initParticles, animate]);
 
+  // Calculate display dimensions maintaining aspect ratio
+  const aspectRatio = IMG_WIDTH / IMG_HEIGHT;
+
   return (
     <canvas
       ref={canvasRef}
-      className={\`w-full h-full \${className}\`}
-      style={{ touchAction: "none" }}
+      className={\`cursor-crosshair \${className}\`}
+      style={{
+        touchAction: "none",
+        width: "100%",
+        height: "auto",
+        aspectRatio: \`\${aspectRatio}\`,
+        maxWidth: \`\${IMG_WIDTH}px\`,
+      }}
     />
   );
 }
