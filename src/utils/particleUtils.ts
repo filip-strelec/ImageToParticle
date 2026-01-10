@@ -1,4 +1,4 @@
-import { ImageData, ParticleConfig, ParticleData } from "@/types";
+import { ImageData, ParticleConfig, ParticleData, OptionalMask, ParticleEdit } from "@/types";
 
 /**
  * Extract particle data from image pixels
@@ -6,7 +6,9 @@ import { ImageData, ParticleConfig, ParticleData } from "@/types";
 export function extractParticleData(
   imageData: ImageData,
   config: ParticleConfig,
-  maskData?: Uint8ClampedArray
+  maskData?: Uint8ClampedArray,
+  optionalMasks?: OptionalMask[],
+  particleEdits?: ParticleEdit[]
 ): ParticleData[] {
   const { width, height, pixels } = imageData;
   const { resolution, alphaThreshold, maxParticles, useOriginalColors, customColors, colorClustering, clusterCount } = config;
@@ -20,7 +22,10 @@ export function extractParticleData(
   const particles: ParticleData[] = [];
   const gap = Math.max(1, resolution);
 
-  // First pass: collect all potential particles
+  // Create a set of delete zones for efficient checking
+  const deleteEdits = particleEdits?.filter(e => e.type === "delete") || [];
+
+  // First pass: collect all potential particles from image
   const potentialParticles: ParticleData[] = [];
 
   for (let y = 0; y < height; y += gap) {
@@ -34,8 +39,31 @@ export function extractParticleData(
       // Skip transparent pixels
       if (a < alphaThreshold) continue;
 
-      // Check if this pixel is masked
+      // Check if this pixel falls within a delete zone
+      let isDeleted = false;
+      for (const edit of deleteEdits) {
+        const dx = x - edit.x;
+        const dy = y - edit.y;
+        const radius = edit.radius || 15;
+        if (dx * dx + dy * dy < radius * radius) {
+          isDeleted = true;
+          break;
+        }
+      }
+      if (isDeleted) continue;
+
+      // Check if this pixel is masked (main interaction mask)
       const isMasked = maskData ? maskData[index] < 128 : false;
+
+      // Check which optional masks this pixel belongs to
+      const particleMasks: string[] = [];
+      if (optionalMasks) {
+        for (const mask of optionalMasks) {
+          if (mask.data && mask.data[index] < 128) {
+            particleMasks.push(mask.slug);
+          }
+        }
+      }
 
       // Determine color
       let color: string;
@@ -50,8 +78,39 @@ export function extractParticleData(
         color = customColors[Math.floor(Math.random() * customColors.length)];
       }
 
-      potentialParticles.push({ x, y, color, masked: isMasked });
+      potentialParticles.push({
+        x,
+        y,
+        color,
+        masked: isMasked,
+        optionalMasks: particleMasks.length > 0 ? particleMasks : undefined,
+      });
     }
+  }
+
+  // Add manually added particles (also check against delete zones)
+  const addEdits = particleEdits?.filter(e => e.type === "add") || [];
+  for (const edit of addEdits) {
+    // Check if this added particle falls within a delete zone
+    let isDeleted = false;
+    for (const deleteEdit of deleteEdits) {
+      const dx = edit.x - deleteEdit.x;
+      const dy = edit.y - deleteEdit.y;
+      const radius = deleteEdit.radius || 15;
+      if (dx * dx + dy * dy < radius * radius) {
+        isDeleted = true;
+        break;
+      }
+    }
+    if (isDeleted) continue;
+
+    potentialParticles.push({
+      x: edit.x,
+      y: edit.y,
+      color: edit.color || "#ffffff",
+      masked: false,
+      optionalMasks: edit.optionalMasks,
+    });
   }
 
   // If we have more particles than the limit, sample evenly across the image

@@ -2,24 +2,32 @@
 
 import { useState, useMemo } from "react";
 import { Copy, Check, Code, FileCode } from "lucide-react";
-import { ImageData, ParticleConfig } from "@/types";
+import { ImageData, ParticleConfig, OptionalMask, ParticleEdit } from "@/types";
 import { extractParticleData } from "@/utils/particleUtils";
 import { generateComponentCode, generateParticleDataCode } from "@/utils/codeGenerator";
 
-interface CodeExporterProps {
+export interface CodeExporterProps {
   imageData: ImageData | null;
   config: ParticleConfig;
   maskData?: Uint8ClampedArray;
+  optionalMasks?: OptionalMask[];
+  particleEdits?: ParticleEdit[];
 }
 
-export default function CodeExporter({ imageData, config, maskData }: CodeExporterProps) {
+export default function CodeExporter({
+  imageData,
+  config,
+  maskData,
+  optionalMasks,
+  particleEdits,
+}: CodeExporterProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<"inline" | "separate">("inline");
 
   const particleData = useMemo(() => {
     if (!imageData) return [];
-    return extractParticleData(imageData, config, maskData);
-  }, [imageData, config, maskData]);
+    return extractParticleData(imageData, config, maskData, optionalMasks, particleEdits);
+  }, [imageData, config, maskData, optionalMasks, particleEdits]);
 
   const componentCode = useMemo(() => {
     if (!imageData) return "";

@@ -1,6 +1,27 @@
 export type ShootingDirection = "top-to-bottom" | "all-directions";
 export type MouseInteractionMode = "push" | "pull" | "orbit" | "turbulence";
 
+// Optional mask for custom particle grouping
+export interface OptionalMask {
+  id: string;           // Unique ID
+  slug: string;         // URL-friendly name for code export (e.g., "foreground", "logo")
+  name: string;         // Display name
+  color: string;        // Color for visualization in editor
+  data: Uint8ClampedArray | null; // Mask pixel data (null if not yet painted)
+}
+
+// Manual particle edit (add/delete/modify)
+export interface ParticleEdit {
+  id: string;
+  type: "add" | "delete" | "modify";
+  x: number;
+  y: number;
+  color?: string;       // For add/modify
+  size?: number;        // For add/modify
+  radius?: number;      // Radius of effect (for delete/modify area)
+  optionalMasks?: string[]; // Mask slugs this particle belongs to
+}
+
 export interface ParticleConfig {
   resolution: number;         // Pixels per dot (1-20)
   particleSize: number;       // Base particle size (1-10)
@@ -50,7 +71,8 @@ export interface Particle {
   size: number;
   color: string;
   alpha: number;
-  masked?: boolean; // Whether this particle is masked (won't interact with mouse)
+  masked?: boolean;           // Whether this particle is masked (won't interact with mouse)
+  optionalMasks?: string[];   // Slugs of optional masks this particle belongs to
 }
 
 export interface ParticleData {
@@ -58,5 +80,6 @@ export interface ParticleData {
   y: number;
   color: string;
   masked?: boolean;
+  optionalMasks?: string[];   // Slugs of optional masks this particle belongs to
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
-import { ImageData, ParticleConfig, Particle } from "@/types";
+import { ImageData, ParticleConfig, Particle, OptionalMask, ParticleEdit } from "@/types";
 import { extractParticleData } from "@/utils/particleUtils";
 import { RotateCcw } from "lucide-react";
 
@@ -9,9 +9,17 @@ interface ParticlePreviewProps {
   imageData: ImageData | null;
   config: ParticleConfig;
   maskData?: Uint8ClampedArray;
+  optionalMasks?: OptionalMask[];
+  particleEdits?: ParticleEdit[];
 }
 
-export default function ParticlePreview({ imageData, config, maskData }: ParticlePreviewProps) {
+export default function ParticlePreview({
+  imageData,
+  config,
+  maskData,
+  optionalMasks,
+  particleEdits,
+}: ParticlePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const mouseRef = useRef({ x: -1000, y: -1000 });
@@ -24,8 +32,8 @@ export default function ParticlePreview({ imageData, config, maskData }: Particl
   // Extract particle data from image
   const particleData = useMemo(() => {
     if (!imageData) return [];
-    return extractParticleData(imageData, config, maskData);
-  }, [imageData, config, maskData]);
+    return extractParticleData(imageData, config, maskData, optionalMasks, particleEdits);
+  }, [imageData, config, maskData, optionalMasks, particleEdits]);
 
   // Reset animation
   const resetAnimation = useCallback(() => {

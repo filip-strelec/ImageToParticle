@@ -66,14 +66,28 @@ export function generateComponentCode(
     ? `import { PARTICLE_DATA } from "./particleData";\n`
     : "";
 
+  // Helper to generate particle data object string
+  const formatParticle = (p: ParticleData): string => {
+    const parts: string[] = [
+      `x:${Math.round(p.x)}`,
+      `y:${Math.round(p.y)}`,
+      `c:"${p.color}"`,
+    ];
+    if (p.masked) parts.push('m:true');
+    if (p.optionalMasks && p.optionalMasks.length > 0) {
+      parts.push(`om:["${p.optionalMasks.join('","')}"]`);
+    }
+    return `{${parts.join(',')}}`;
+  };
+
   const dataConst = mode === "inline"
     ? `\n// Particle positions and colors extracted from image\nconst PARTICLE_DATA: ParticleData[] = [\n${
-        particles.map(p => {
-          const obj = `{x:${Math.round(p.x)},y:${Math.round(p.y)},c:"${p.color}"${p.masked ? ',m:true' : ''}}`;
-          return `  ${obj}`;
-        }).join(',\n')
+        particles.map(p => `  ${formatParticle(p)}`).join(',\n')
       }\n];\n`
     : "";
+
+  // Check if any particles have optional masks
+  const hasOptionalMasks = particles.some(p => p.optionalMasks && p.optionalMasks.length > 0);
 
   // Generate mouse interaction mode code
   const mouseInteractionCode = generateMouseInteractionCode(config);
@@ -89,7 +103,7 @@ interface ParticleData {
   x: number;
   y: number;
   c: string; // color
-  m?: boolean; // masked (won't interact with mouse)
+  m?: boolean; // masked (won't interact with mouse)${hasOptionalMasks ? '\n  om?: string[]; // optional mask slugs this particle belongs to' : ''}
 }
 
 interface Particle {
@@ -101,7 +115,7 @@ interface Particle {
   vy: number;
   size: number;
   color: string;
-  masked?: boolean;
+  masked?: boolean;${hasOptionalMasks ? '\n  optionalMasks?: string[];' : ''}
 }
 
 interface ParticleAnimationProps {
@@ -173,7 +187,7 @@ export default function ParticleAnimation({ className = "" }: ParticleAnimationP
         vy: 0,
         size: Math.max(CONFIG.minParticleSize, CONFIG.particleSize + Math.random() * CONFIG.sizeVariation),
         color: p.c,
-        masked: p.m,
+        masked: p.m,${hasOptionalMasks ? '\n        optionalMasks: p.om,' : ''}
       };
     });
 
@@ -338,25 +352,34 @@ ${physicsCode}
 }
 
 export function generateParticleDataCode(particles: ParticleData[]): string {
-  const data = particles.map(p => ({
-    x: Math.round(p.x),
-    y: Math.round(p.y),
-    c: p.color,
-    ...(p.masked ? { m: true } : {})
-  }));
+  const hasOptionalMasks = particles.some(p => p.optionalMasks && p.optionalMasks.length > 0);
+
+  // Helper to format a particle
+  const formatParticle = (p: ParticleData): string => {
+    const parts: string[] = [
+      `x:${Math.round(p.x)}`,
+      `y:${Math.round(p.y)}`,
+      `c:"${p.color}"`,
+    ];
+    if (p.masked) parts.push('m:true');
+    if (p.optionalMasks && p.optionalMasks.length > 0) {
+      parts.push(`om:["${p.optionalMasks.join('","')}"]`);
+    }
+    return `  {${parts.join(',')}}`;
+  };
 
   return `// Auto-generated particle data
-// Particles: ${data.length}
+// Particles: ${particles.length}
 
 export interface ParticleData {
   x: number;
   y: number;
   c: string;
-  m?: boolean;
+  m?: boolean;${hasOptionalMasks ? '\n  om?: string[]; // optional mask slugs' : ''}
 }
 
 export const PARTICLE_DATA: ParticleData[] = [
-${data.map(p => `  {x:${Math.round(p.x)},y:${Math.round(p.y)},c:"${p.c}"${p.m ? ',m:true' : ''}}`).join(',\n')}
+${particles.map(p => formatParticle(p)).join(',\n')}
 ];
 `;
 }
