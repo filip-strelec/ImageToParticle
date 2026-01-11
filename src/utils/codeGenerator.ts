@@ -293,20 +293,17 @@ export function generateComponentCode(
   const generateQualityDetection = (renderMode: string): string => {
     if (renderMode === "auto") {
       return `
-    // Detect activity (animation running or mouse interaction)
-    const isActive = !isAnimationComplete || isMouseActive;
-
-    // Measure performance during activity, then lock the decision permanently
-    if (qualityModeRef.current === null && isActive) {
+    // Measure performance from the very start (including initial animation)
+    if (qualityModeRef.current === null) {
       activityFrameCountRef.current++;
       // Count frames slower than 25ms (< 40fps) as "slow"
       if (frameTime > 25) slowFrameCountRef.current++;
 
-      // After 90 frames (~1.5s on 60fps), decide
-      if (activityFrameCountRef.current >= 90) {
+      // After 45 frames (~0.75s on 60fps, ~1.5s on 30fps), decide
+      if (activityFrameCountRef.current >= 45) {
         const slowRatio = slowFrameCountRef.current / activityFrameCountRef.current;
-        // If more than 20% of frames were slow, switch to squares
-        qualityModeRef.current = slowRatio > 0.2 ? "squares" : "circles";
+        // If more than 25% of frames were slow, switch to squares
+        qualityModeRef.current = slowRatio > 0.25 ? "squares" : "circles";
       }
     }
 `;
