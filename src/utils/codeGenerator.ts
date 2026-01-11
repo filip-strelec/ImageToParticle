@@ -299,11 +299,11 @@ export function generateComponentCode(
       // Count frames slower than 25ms (< 40fps) as "slow"
       if (frameTime > 25) slowFrameCountRef.current++;
 
-      // After 45 frames (~0.75s on 60fps, ~1.5s on 30fps), decide
-      if (activityFrameCountRef.current >= 45) {
+      // After 45 frames (~0.75s on 60fps, ~1.5s on 30fps), decide //CHANGED TO 14
+      if (activityFrameCountRef.current >= 14) {
         const slowRatio = slowFrameCountRef.current / activityFrameCountRef.current;
-        // If more than 25% of frames were slow, switch to squares
-        qualityModeRef.current = slowRatio > 0.25 ? "squares" : "circles";
+        // If more than 50% of frames were slow, switch to squares
+        qualityModeRef.current = slowRatio > 50 ? "squares" : "circles";
       }
     }
 `;
