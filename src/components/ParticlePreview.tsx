@@ -25,11 +25,15 @@ export default function ParticlePreview({
   const mouseRef = useRef({ x: -1000, y: -1000 });
   const animationRef = useRef<number>(0);
   const frameCountRef = useRef<number>(0);
-  const lastFrameTimeRef = useRef<number>(0); // For FPS-based adaptive skipping
-  const adaptiveSkipRef = useRef<number>(0); // Dynamic skip count based on actual performance
+  const lastFrameTimeRef = useRef<number>(0);
+  const adaptiveSkipRef = useRef<number>(0);
+  // Quality mode: starts as null (undecided), locks after measurement during activity
+  const qualityModeRef = useRef<"circles" | "squares" | null>(null);
+  const slowFrameCountRef = useRef<number>(0); // Count slow frames during activity
+  const activityFrameCountRef = useRef<number>(0); // Count total frames during activity
   const animationStartTimeRef = useRef<number>(0);
-  const particlesActivatedRef = useRef<number>(0); // How many particles have been "shot" so far
-  const [particleCount, setParticleCount] = useState(0); // Track particle count for display
+  const particlesActivatedRef = useRef<number>(0);
+  const [particleCount, setParticleCount] = useState(0);
 
   // Extract particle data from image
   const particleData = useMemo(() => {
@@ -104,19 +108,17 @@ export default function ParticlePreview({
     const mouseRadiusSq = config.mouseRadius * config.mouseRadius;
     const pCount = particlesRef.current.length;
 
-    // Performance-based adaptive frame skipping
+    // Performance measurement
     const frameTime = now - lastFrameTimeRef.current;
     lastFrameTimeRef.current = now;
 
-    // If frame took longer than 20ms (< 50fps), increase skip count
-    // If frame took less than 12ms (> 80fps), decrease skip count
+    // Adaptive frame skipping
     if (frameTime > 20 && adaptiveSkipRef.current < 3) {
       adaptiveSkipRef.current++;
     } else if (frameTime < 12 && adaptiveSkipRef.current > 0) {
       adaptiveSkipRef.current--;
     }
 
-    // Combine particle-count based skipping with performance-based skipping
     const baseSkip = pCount > 20000 ? 2 : pCount > 10000 ? 1 : 0;
     const skipFrames = Math.max(baseSkip, adaptiveSkipRef.current);
     frameCountRef.current++;
@@ -129,6 +131,24 @@ export default function ParticlePreview({
     }
 
     const isAnimationComplete = particlesActivatedRef.current >= pCount;
+
+    // Detect if there's activity (animation running or mouse interaction)
+    const isMouseActive = mouse.x > -500 && mouse.y > -500;
+    const isActive = !isAnimationComplete || isMouseActive;
+
+    // Measure performance during activity, then lock the decision
+    if (qualityModeRef.current === null && isActive && lastFrameTimeRef.current > 0) {
+      activityFrameCountRef.current++;
+      if (frameTime > 20) {
+        slowFrameCountRef.current++;
+      }
+      // After 60 frames of activity (~1 second), make the decision
+      if (activityFrameCountRef.current >= 60) {
+        const slowRatio = slowFrameCountRef.current / activityFrameCountRef.current;
+        // If more than 30% of frames were slow, use squares
+        qualityModeRef.current = slowRatio > 0.3 ? "squares" : "circles";
+      }
+    }
 
     // Pre-compute constants
     const mouseX = mouse.x;
@@ -216,8 +236,8 @@ export default function ParticlePreview({
     // Clear and render
     ctx.clearRect(0, 0, width, height);
 
-    // Use squares instead of circles when performance is very bad
-    const useSquares = adaptiveSkipRef.current >= 2;
+    // Use circles by default, squares only if locked to squares after measurement
+    const useSquares = qualityModeRef.current === "squares";
     const TWO_PI = Math.PI * 2;
 
     // Group particles by color for batched drawing

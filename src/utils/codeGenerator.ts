@@ -162,6 +162,10 @@ export default function ParticleAnimation({ className = "" }: ParticleAnimationP
   const frameCountRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
   const adaptiveSkipRef = useRef<number>(0);
+  // Quality mode: null = undecided, locks after measuring during activity
+  const qualityModeRef = useRef<"circles" | "squares" | null>(null);
+  const slowFrameCountRef = useRef<number>(0);
+  const activityFrameCountRef = useRef<number>(0);
 
   const initParticles = useCallback(() => {
     const centerX = IMG_WIDTH / 2;
@@ -209,18 +213,17 @@ export default function ParticleAnimation({ className = "" }: ParticleAnimationP
     const mouseRadiusSq = CONFIG.mouseRadius * CONFIG.mouseRadius;
     const pCount = particlesRef.current.length;
 
-    // Performance-based adaptive frame skipping
+    // Performance measurement
     const frameTime = now - lastFrameTimeRef.current;
     lastFrameTimeRef.current = now;
 
-    // Adjust skip count based on actual FPS
+    // Adaptive frame skipping
     if (frameTime > 20 && adaptiveSkipRef.current < 3) {
       adaptiveSkipRef.current++;
     } else if (frameTime < 12 && adaptiveSkipRef.current > 0) {
       adaptiveSkipRef.current--;
     }
 
-    // Combine particle-count and performance-based skipping
     const baseSkip = pCount > 20000 ? 2 : pCount > 10000 ? 1 : 0;
     const skipFrames = Math.max(baseSkip, adaptiveSkipRef.current);
     frameCountRef.current++;
@@ -233,6 +236,21 @@ export default function ParticleAnimation({ className = "" }: ParticleAnimationP
     }
 
     const isAnimationComplete = particlesActivatedRef.current >= pCount;
+
+    // Detect activity (animation running or mouse interaction)
+    const isMouseActive = mouse.x > -500 && mouse.y > -500;
+    const isActive = !isAnimationComplete || isMouseActive;
+
+    // Measure performance during activity, then lock the decision permanently
+    if (qualityModeRef.current === null && isActive && lastFrameTimeRef.current > 0) {
+      activityFrameCountRef.current++;
+      if (frameTime > 20) slowFrameCountRef.current++;
+      // After 60 frames of activity (~1 second), decide
+      if (activityFrameCountRef.current >= 60) {
+        const slowRatio = slowFrameCountRef.current / activityFrameCountRef.current;
+        qualityModeRef.current = slowRatio > 0.3 ? "squares" : "circles";
+      }
+    }
 
     // Pre-compute values outside loop
     const mouseX = mouse.x;
@@ -283,8 +301,8 @@ ${physicsCode}
     // Clear and render
     ctx.clearRect(0, 0, width, height);
 
-    // Use squares when performance is very bad (3x faster than circles)
-    const useSquares = adaptiveSkipRef.current >= 2;
+    // Use circles by default, squares only if locked to squares after measurement
+    const useSquares = qualityModeRef.current === "squares";
 
     // Group particles by color for batched drawing
     const colorGroups: Map<string, Particle[]> = new Map();
