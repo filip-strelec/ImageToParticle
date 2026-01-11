@@ -236,8 +236,16 @@ export default function ParticlePreview({
     // Clear and render
     ctx.clearRect(0, 0, width, height);
 
-    // Use circles by default, squares only if locked to squares after measurement
-    const useSquares = qualityModeRef.current === "squares";
+    // Determine render mode based on config
+    let useSquares: boolean;
+    if (config.renderMode === "circles") {
+      useSquares = false;
+    } else if (config.renderMode === "squares") {
+      useSquares = true;
+    } else {
+      // Auto mode: use the locked decision (or default to circles if not yet decided)
+      useSquares = qualityModeRef.current === "squares";
+    }
     const TWO_PI = Math.PI * 2;
 
     // Group particles by color for batched drawing
@@ -251,40 +259,33 @@ export default function ParticlePreview({
       targetMap.get(p.color)!.push(p);
     }
 
-    // Draw non-masked particles first (bottom layer)
-    for (const [color, particles] of colorGroups) {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.85;
-      if (useSquares) {
-        for (const p of particles) {
-          ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+    // Helper to draw a group of particles
+    const drawGroup = (groups: Map<string, Particle[]>) => {
+      for (const [color, particles] of groups) {
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.85;
+        if (useSquares) {
+          for (const p of particles) {
+            ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+          }
+        } else {
+          ctx.beginPath();
+          for (const p of particles) {
+            ctx.moveTo(p.x + p.size, p.y);
+            ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
+          }
+          ctx.fill();
         }
-      } else {
-        ctx.beginPath();
-        for (const p of particles) {
-          ctx.moveTo(p.x + p.size, p.y);
-          ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
-        }
-        ctx.fill();
       }
-    }
+    };
 
-    // Draw masked particles on top (top layer)
-    for (const [color, particles] of maskedColorGroups) {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.85;
-      if (useSquares) {
-        for (const p of particles) {
-          ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
-        }
-      } else {
-        ctx.beginPath();
-        for (const p of particles) {
-          ctx.moveTo(p.x + p.size, p.y);
-          ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
-        }
-        ctx.fill();
-      }
+    // Draw based on maskedParticlesOnTop setting
+    if (config.maskedParticlesOnTop) {
+      drawGroup(colorGroups);       // Non-masked first (bottom)
+      drawGroup(maskedColorGroups); // Masked on top
+    } else {
+      drawGroup(maskedColorGroups); // Masked first (bottom)
+      drawGroup(colorGroups);       // Non-masked on top
     }
 
     ctx.globalAlpha = 1;

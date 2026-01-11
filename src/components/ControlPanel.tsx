@@ -1,7 +1,7 @@
 "use client";
 
-import { Settings, RotateCcw, Palette, Zap, MousePointer, Sparkles } from "lucide-react";
-import { ParticleConfig, ImageData, ShootingDirection, MouseInteractionMode } from "@/types";
+import { Settings, RotateCcw, Palette, Zap, MousePointer, Sparkles, Layers } from "lucide-react";
+import { ParticleConfig, ImageData, ShootingDirection, MouseInteractionMode, RenderMode } from "@/types";
 import { useMemo } from "react";
 
 interface ControlPanelProps {
@@ -118,6 +118,24 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
             <p className="text-xs text-gray-500">
               Estimated particles: ~{estimatedParticles.toLocaleString()}
             </p>
+
+            <div className="space-y-2 pt-2 border-t border-gray-800">
+              <label className="text-sm text-gray-400">Render Mode</label>
+              <select
+                value={config.renderMode}
+                onChange={(e) => onChange({ renderMode: e.target.value as RenderMode })}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="circles">Circles (Quality)</option>
+                <option value="squares">Squares (Performance)</option>
+                <option value="auto">Auto (Detect Performance)</option>
+              </select>
+              <p className="text-xs text-gray-500">
+                {config.renderMode === "circles" && "Always renders circular particles for best quality."}
+                {config.renderMode === "squares" && "Always renders square particles for best performance."}
+                {config.renderMode === "auto" && "Measures FPS during activity, then locks to best mode."}
+              </p>
+            </div>
           </div>
         </section>
 
@@ -197,6 +215,27 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
                 suffix="x"
               />
             )}
+          </div>
+        </section>
+
+        {/* Masking Section */}
+        <section>
+          <h3 className="text-sm font-medium text-indigo-400 mb-3 flex items-center gap-2">
+            <Layers className="w-4 h-4" /> Interaction Mask
+          </h3>
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.maskedParticlesOnTop}
+                onChange={(e) => onChange({ maskedParticlesOnTop: e.target.checked })}
+                className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+              />
+              <span className="text-sm text-gray-300">Masked particles on top</span>
+            </label>
+            <p className="text-xs text-gray-500">
+              When enabled, masked particles render above non-masked ones. When disabled, they render below.
+            </p>
           </div>
         </section>
 

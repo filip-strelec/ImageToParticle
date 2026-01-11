@@ -37,6 +37,8 @@ const defaultConfig: ParticleConfig = {
   bounceIntensity: 1,
   bounceDamping: 0.85,
   mouseInteractionDuringAnimation: false,
+  renderMode: "circles",
+  maskedParticlesOnTop: true,
 };
 
 export default function Home() {

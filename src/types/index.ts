@@ -1,5 +1,6 @@
 export type ShootingDirection = "top-to-bottom" | "all-directions";
 export type MouseInteractionMode = "push" | "pull" | "orbit" | "turbulence";
+export type RenderMode = "circles" | "squares" | "auto";
 
 // Optional mask for custom particle grouping
 export interface OptionalMask {
@@ -48,6 +49,8 @@ export interface ParticleConfig {
   bounceIntensity: number;    // How much particles overshoot (0.5-2)
   bounceDamping: number;      // How quickly bounce settles (0.7-0.95)
   mouseInteractionDuringAnimation: boolean; // Allow mouse interaction during initial animation
+  renderMode: RenderMode;        // How to render particles: circles, squares, or auto (performance-based)
+  maskedParticlesOnTop: boolean; // If true, masked particles render above non-masked; if false, below
 }
 
 export interface ImageData {

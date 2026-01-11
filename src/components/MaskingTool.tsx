@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ImageData as ImageDataType, OptionalMask } from "@/types";
-import { Eraser, Trash2, Eye, EyeOff, Paintbrush, ZoomIn } from "lucide-react";
+import { Eraser, Trash2, Eye, EyeOff, Paintbrush, ZoomIn, Undo2 } from "lucide-react";
 
 interface MaskingToolProps {
   imageData: ImageDataType;
@@ -39,6 +39,11 @@ export default function MaskingTool({
   const scaleRef = useRef(1);
   const offsetRef = useRef({ x: 0, y: 0 });
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Undo history - stores mask data snapshots
+  const historyRef = useRef<Uint8ClampedArray[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const MAX_HISTORY = 20;
 
   // Load image once
   useEffect(() => {
@@ -313,6 +318,8 @@ export default function MaskingTool({
 
     // Left click for drawing/erasing
     if (e.button === 0) {
+      // Save current state before drawing for undo
+      saveToHistory();
       setIsDrawing(true);
       const coords = getCanvasCoords(e.clientX, e.clientY);
       if (coords) drawMask(coords.x, coords.y);
@@ -353,6 +360,9 @@ export default function MaskingTool({
   };
 
   const clearMask = () => {
+    // Save current state before clearing for undo
+    saveToHistory();
+
     if (isEditingOptionalMask && activeMaskId && onOptionalMaskChange) {
       // Clear the active optional mask
       const tempCanvas = document.createElement("canvas");
@@ -382,6 +392,71 @@ export default function MaskingTool({
     }
     drawCanvas();
   };
+
+  // Save current mask state to history (call before making changes)
+  const saveToHistory = useCallback(() => {
+    let currentData: Uint8ClampedArray | null = null;
+
+    if (isEditingOptionalMask && activeMaskId) {
+      const activeMask = optionalMasks.find(m => m.id === activeMaskId);
+      if (activeMask?.data) {
+        currentData = new Uint8ClampedArray(activeMask.data);
+      }
+    } else {
+      const maskCanvas = maskCanvasRef.current;
+      if (maskCanvas) {
+        const ctx = maskCanvas.getContext("2d");
+        if (ctx) {
+          currentData = new Uint8ClampedArray(ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height).data);
+        }
+      }
+    }
+
+    if (currentData) {
+      historyRef.current.push(currentData);
+      // Limit history size
+      if (historyRef.current.length > MAX_HISTORY) {
+        historyRef.current.shift();
+      }
+      setCanUndo(true);
+    }
+  }, [isEditingOptionalMask, activeMaskId, optionalMasks]);
+
+  // Undo last action
+  const undo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+
+    const previousData = historyRef.current.pop()!;
+    setCanUndo(historyRef.current.length > 0);
+
+    if (isEditingOptionalMask && activeMaskId && onOptionalMaskChange) {
+      onOptionalMaskChange(activeMaskId, previousData);
+    } else {
+      const maskCanvas = maskCanvasRef.current;
+      if (maskCanvas) {
+        const ctx = maskCanvas.getContext("2d");
+        if (ctx) {
+          const imgData = new ImageData(previousData, maskCanvas.width, maskCanvas.height);
+          ctx.putImageData(imgData, 0, 0);
+          onMaskChange(previousData);
+        }
+      }
+    }
+    drawCanvas();
+  }, [isEditingOptionalMask, activeMaskId, onOptionalMaskChange, onMaskChange, drawCanvas]);
+
+  // Keyboard shortcuts (Ctrl+Z for undo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo]);
 
   // Get current mask info for display
   const getActiveMaskInfo = () => {
@@ -551,14 +626,29 @@ export default function MaskingTool({
           </button>
         </div>
 
-        {/* Clear Button */}
-        <button
-          onClick={clearMask}
-          className="w-full px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm text-white transition-colors flex items-center justify-center gap-2"
-        >
-          <Trash2 className="w-4 h-4" />
-          Clear Current Mask
-        </button>
+        {/* Undo and Clear Buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 ${
+              canUndo
+                ? "bg-gray-700 hover:bg-gray-600 text-white"
+                : "bg-gray-800 text-gray-500 cursor-not-allowed"
+            }`}
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="w-4 h-4" />
+            Undo
+          </button>
+          <button
+            onClick={clearMask}
+            className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm text-white transition-colors flex items-center justify-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Clear
+          </button>
+        </div>
       </div>
     </div>
   );

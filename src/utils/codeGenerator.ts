@@ -95,6 +95,63 @@ export function generateComponentCode(
   // Generate physics code based on config
   const physicsCode = generatePhysicsCode(config);
 
+  // Generate refs based on render mode
+  const generatePerformanceRefs = (renderMode: string): string => {
+    if (renderMode === "auto") {
+      return `  // Performance optimization refs
+  const frameCountRef = useRef<number>(0);
+  const lastFrameTimeRef = useRef<number>(0);
+  const adaptiveSkipRef = useRef<number>(0);
+  // Quality mode: null = undecided, locks after measuring during activity
+  const qualityModeRef = useRef<"circles" | "squares" | null>(null);
+  const slowFrameCountRef = useRef<number>(0);
+  const activityFrameCountRef = useRef<number>(0);`;
+    } else {
+      return `  // Performance optimization refs
+  const frameCountRef = useRef<number>(0);
+  const lastFrameTimeRef = useRef<number>(0);
+  const adaptiveSkipRef = useRef<number>(0);`;
+    }
+  };
+
+  // Generate quality detection code for auto mode
+  const generateQualityDetection = (renderMode: string): string => {
+    if (renderMode === "auto") {
+      return `
+    // Detect activity (animation running or mouse interaction)
+    const isMouseActive = mouse.x > -500 && mouse.y > -500;
+    const isActive = !isAnimationComplete || isMouseActive;
+
+    // Measure performance during activity, then lock the decision permanently
+    if (qualityModeRef.current === null && isActive && lastFrameTimeRef.current > 0) {
+      activityFrameCountRef.current++;
+      if (frameTime > 20) slowFrameCountRef.current++;
+      // After 60 frames of activity (~1 second), decide
+      if (activityFrameCountRef.current >= 60) {
+        const slowRatio = slowFrameCountRef.current / activityFrameCountRef.current;
+        qualityModeRef.current = slowRatio > 0.3 ? "squares" : "circles";
+      }
+    }
+`;
+    }
+    return "";
+  };
+
+  // Generate the useSquares determination based on render mode
+  const generateUseSquaresCode = (renderMode: string): string => {
+    if (renderMode === "circles") {
+      return `const useSquares = false; // Always use circles`;
+    } else if (renderMode === "squares") {
+      return `const useSquares = true; // Always use squares for performance`;
+    } else {
+      return `const useSquares = qualityModeRef.current === "squares"; // Auto-detected`;
+    }
+  };
+
+  const performanceRefs = generatePerformanceRefs(config.renderMode);
+  const qualityDetection = generateQualityDetection(config.renderMode);
+  const useSquaresCode = generateUseSquaresCode(config.renderMode);
+
   return `"use client";
 
 import { useEffect, useRef, useCallback } from "react";
@@ -158,14 +215,7 @@ export default function ParticleAnimation({ className = "" }: ParticleAnimationP
   const animationRef = useRef<number>(0);
   const animationStartTimeRef = useRef<number>(0);
   const particlesActivatedRef = useRef<number>(0);
-  // Performance optimization refs
-  const frameCountRef = useRef<number>(0);
-  const lastFrameTimeRef = useRef<number>(0);
-  const adaptiveSkipRef = useRef<number>(0);
-  // Quality mode: null = undecided, locks after measuring during activity
-  const qualityModeRef = useRef<"circles" | "squares" | null>(null);
-  const slowFrameCountRef = useRef<number>(0);
-  const activityFrameCountRef = useRef<number>(0);
+${performanceRefs}
 
   const initParticles = useCallback(() => {
     const centerX = IMG_WIDTH / 2;
@@ -236,22 +286,7 @@ export default function ParticleAnimation({ className = "" }: ParticleAnimationP
     }
 
     const isAnimationComplete = particlesActivatedRef.current >= pCount;
-
-    // Detect activity (animation running or mouse interaction)
-    const isMouseActive = mouse.x > -500 && mouse.y > -500;
-    const isActive = !isAnimationComplete || isMouseActive;
-
-    // Measure performance during activity, then lock the decision permanently
-    if (qualityModeRef.current === null && isActive && lastFrameTimeRef.current > 0) {
-      activityFrameCountRef.current++;
-      if (frameTime > 20) slowFrameCountRef.current++;
-      // After 60 frames of activity (~1 second), decide
-      if (activityFrameCountRef.current >= 60) {
-        const slowRatio = slowFrameCountRef.current / activityFrameCountRef.current;
-        qualityModeRef.current = slowRatio > 0.3 ? "squares" : "circles";
-      }
-    }
-
+${qualityDetection}
     // Pre-compute values outside loop
     const mouseX = mouse.x;
     const mouseY = mouse.y;
@@ -301,8 +336,8 @@ ${physicsCode}
     // Clear and render
     ctx.clearRect(0, 0, width, height);
 
-    // Use circles by default, squares only if locked to squares after measurement
-    const useSquares = qualityModeRef.current === "squares";
+    // Render mode
+    ${useSquaresCode}
 
     // Group particles by color for batched drawing
     const colorGroups: Map<string, Particle[]> = new Map();
@@ -315,41 +350,30 @@ ${physicsCode}
       targetMap.get(p.color)!.push(p);
     }
 
-    // Draw non-masked particles first (bottom layer)
-    for (const [color, particles] of colorGroups) {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.85;
-      if (useSquares) {
-        for (const p of particles) {
-          ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+    // Helper to draw a group of particles
+    const drawGroup = (groups: Map<string, Particle[]>) => {
+      for (const [color, particles] of groups) {
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.85;
+        if (useSquares) {
+          for (const p of particles) {
+            ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+          }
+        } else {
+          ctx.beginPath();
+          for (const p of particles) {
+            ctx.moveTo(p.x + p.size, p.y);
+            ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
+          }
+          ctx.fill();
         }
-      } else {
-        ctx.beginPath();
-        for (const p of particles) {
-          ctx.moveTo(p.x + p.size, p.y);
-          ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
-        }
-        ctx.fill();
       }
-    }
+    };
 
-    // Draw masked particles on top (highest z-index)
-    for (const [color, particles] of maskedColorGroups) {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.85;
-      if (useSquares) {
-        for (const p of particles) {
-          ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
-        }
-      } else {
-        ctx.beginPath();
-        for (const p of particles) {
-          ctx.moveTo(p.x + p.size, p.y);
-          ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
-        }
-        ctx.fill();
-      }
-    }
+    // Draw based on z-order setting
+    ${config.maskedParticlesOnTop ? `drawGroup(colorGroups);       // Non-masked first (bottom)
+    drawGroup(maskedColorGroups); // Masked on top` : `drawGroup(maskedColorGroups); // Masked first (bottom)
+    drawGroup(colorGroups);       // Non-masked on top`}
 
     ctx.globalAlpha = 1;
     animationRef.current = requestAnimationFrame(() => animate(ctx, width, height));
