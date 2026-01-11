@@ -79,7 +79,17 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
-function shiftColorByVelocity(color: string, velocity: number, intensity: number, mode: VelocityColorMode = "brighten", targetColor: string = "#ffffff"): string {
+// Store particle hue offset for rainbow mode persistence
+const particleHueOffsets = new WeakMap<object, number>();
+
+function shiftColorByVelocity(
+  color: string,
+  velocity: number,
+  intensity: number,
+  mode: VelocityColorMode = "brighten",
+  targetColor: string = "#ffffff",
+  particleRef?: object // Reference for rainbow mode persistence
+): string {
   const [r, g, b] = parseColorToRGB(color);
   const factor = Math.min(velocity * intensity * 10, 100);
 
@@ -108,6 +118,28 @@ function shiftColorByVelocity(color: string, velocity: number, intensity: number
       const [nr, ng, nb] = hslToRgb(h, newS, l);
       return `rgb(${nr},${ng},${nb})`;
     }
+    case "rainbow": {
+      // Rainbow mode: cycle through hues based on velocity, ignoring original color
+      // Works even on black/white particles
+      if (velocity < 0.1) {
+        // Not moving enough, return original color
+        return color;
+      }
+      // Use velocity to shift hue continuously
+      // Higher velocity = faster hue cycling
+      let hueOffset = 0;
+      if (particleRef) {
+        hueOffset = particleHueOffsets.get(particleRef) || Math.random();
+        // Increment hue based on velocity
+        hueOffset = (hueOffset + velocity * intensity * 0.02) % 1;
+        particleHueOffsets.set(particleRef, hueOffset);
+      } else {
+        hueOffset = (performance.now() * 0.001 * intensity + velocity * 0.1) % 1;
+      }
+      // Use high saturation and medium-high lightness for vibrant colors
+      const [nr, ng, nb] = hslToRgb(hueOffset, 1, 0.5);
+      return `rgb(${nr},${ng},${nb})`;
+    }
     default:
       return color;
   }
@@ -132,9 +164,7 @@ export default function ParticlePreview({
   const particlesRef = useRef<Particle[]>([]);
   const mouseRef = useRef({ x: -1000, y: -1000 });
   const animationRef = useRef<number>(0);
-  const frameCountRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
-  const adaptiveSkipRef = useRef<number>(0);
   // Quality mode: starts as null (undecided), locks after measurement during activity
   const qualityModeRef = useRef<"circles" | "squares" | null>(null);
   const slowFrameCountRef = useRef<number>(0); // Count slow frames during activity
@@ -142,6 +172,7 @@ export default function ParticlePreview({
   const animationStartTimeRef = useRef<number>(0);
   const particlesActivatedRef = useRef<number>(0);
   const [particleCount, setParticleCount] = useState(0);
+  const frameCountRef = useRef<number>(0); // For FPS calculation only
 
   // FPS and metrics tracking
   const fpsHistoryRef = useRef<number[]>([]);
@@ -150,7 +181,6 @@ export default function ParticlePreview({
     avgFps: 0,
     frameTime: 0,
     renderMode: "circles" as "circles" | "squares",
-    skipFrames: 0,
   });
 
   // Extract particle data from image
@@ -233,21 +263,10 @@ export default function ParticlePreview({
     const mouseRadiusSq = config.mouseRadius * config.mouseRadius;
     const pCount = particlesRef.current.length;
 
-    // Performance measurement
+    // Performance measurement for FPS display
     const frameTime = now - lastFrameTimeRef.current;
     lastFrameTimeRef.current = now;
-
-    // Adaptive frame skipping
-    if (frameTime > 20 && adaptiveSkipRef.current < 3) {
-      adaptiveSkipRef.current++;
-    } else if (frameTime < 12 && adaptiveSkipRef.current > 0) {
-      adaptiveSkipRef.current--;
-    }
-
-    const baseSkip = pCount > 20000 ? 2 : pCount > 10000 ? 1 : 0;
-    const skipFrames = Math.max(baseSkip, adaptiveSkipRef.current);
     frameCountRef.current++;
-    const shouldRender = frameCountRef.current % (skipFrames + 1) === 0;
 
     // Calculate and update FPS metrics (every 10 frames to reduce state updates)
     if (frameCountRef.current % 10 === 0 && frameTime > 0) {
@@ -266,7 +285,6 @@ export default function ParticlePreview({
         avgFps,
         frameTime: Math.round(frameTime * 10) / 10,
         renderMode: effectiveShape as "circles" | "squares",
-        skipFrames,
       });
     }
 
@@ -435,12 +453,6 @@ export default function ParticlePreview({
       p.y += p.vy;
     }
 
-    // Skip rendering on some frames for performance
-    if (!shouldRender) {
-      animationRef.current = requestAnimationFrame(() => animate(ctx, canvas, width, height));
-      return;
-    }
-
     // Trails: use semi-transparent fill instead of clear
     if (config.enableTrails) {
       // Parse hex color to RGB
@@ -559,7 +571,8 @@ export default function ParticlePreview({
           velocity,
           config.velocityColorIntensity,
           config.velocityColorMode || "brighten",
-          config.velocityColorTarget || "#ffffff"
+          config.velocityColorTarget || "#ffffff",
+          p // Pass particle reference for rainbow mode persistence
         );
       }
 
@@ -598,7 +611,8 @@ export default function ParticlePreview({
     const canvas = canvasRef.current;
     if (!canvas || !imageData) return;
 
-    const ctx = canvas.getContext("2d");
+    // Use alpha: false for better performance and to prevent flickering on Safari/iOS
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
     // Set canvas size to match image dimensions exactly
@@ -608,6 +622,10 @@ export default function ParticlePreview({
 
     // Scale the context to handle high DPI displays
     ctx.scale(dpr, dpr);
+
+    // Fill with background color initially to prevent flash
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, imageData.width, imageData.height);
 
     initParticles();
 
@@ -682,9 +700,6 @@ export default function ParticlePreview({
               <span className="text-gray-500">avg: {metrics.avgFps}</span>
               <span className="text-gray-500">{metrics.frameTime}ms</span>
               <span className="text-gray-500 capitalize">{metrics.renderMode}</span>
-              {metrics.skipFrames > 0 && (
-                <span className="text-gray-500">skip: {metrics.skipFrames}</span>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-3">

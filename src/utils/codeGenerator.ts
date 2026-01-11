@@ -134,9 +134,12 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
-type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "saturation";
+type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "saturation" | "rainbow";
 
-function shiftColorByVelocity(color: string, velocity: number, intensity: number, mode: VelocityColorMode, targetColor: string): string {
+// Store particle hue offset for rainbow mode
+const particleHueOffsets = new WeakMap<object, number>();
+
+function shiftColorByVelocity(color: string, velocity: number, intensity: number, mode: VelocityColorMode, targetColor: string, particleRef?: object): string {
   const [r, g, b] = parseColorToRGB(color);
   const factor = Math.min(velocity * intensity * 10, 100);
   switch (mode) {
@@ -158,6 +161,19 @@ function shiftColorByVelocity(color: string, velocity: number, intensity: number
     case "saturation": {
       const [h, s, l] = rgbToHsl(r, g, b);
       const [nr, ng, nb] = hslToRgb(h, Math.min(1, s + factor * 0.01), l);
+      return \`rgb(\${nr},\${ng},\${nb})\`;
+    }
+    case "rainbow": {
+      if (velocity < 0.1) return color;
+      let hueOffset = 0;
+      if (particleRef) {
+        hueOffset = particleHueOffsets.get(particleRef) || Math.random();
+        hueOffset = (hueOffset + velocity * intensity * 0.02) % 1;
+        particleHueOffsets.set(particleRef, hueOffset);
+      } else {
+        hueOffset = (performance.now() * 0.001 * intensity + velocity * 0.1) % 1;
+      }
+      const [nr, ng, nb] = hslToRgb(hueOffset, 1, 0.5);
       return \`rgb(\${nr},\${ng},\${nb})\`;
     }
     default:
@@ -262,18 +278,14 @@ export function generateComponentCode(
   const generatePerformanceRefs = (renderMode: string): string => {
     if (renderMode === "auto") {
       return `  // Performance optimization refs
-  const frameCountRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
-  const adaptiveSkipRef = useRef<number>(0);
   // Quality mode: null = undecided, locks after measuring during activity
   const qualityModeRef = useRef<"circles" | "squares" | null>(null);
   const slowFrameCountRef = useRef<number>(0);
   const activityFrameCountRef = useRef<number>(0);`;
     } else {
-      return `  // Performance optimization refs
-  const frameCountRef = useRef<number>(0);
-  const lastFrameTimeRef = useRef<number>(0);
-  const adaptiveSkipRef = useRef<number>(0);`;
+      return `  // Performance measurement ref
+  const lastFrameTimeRef = useRef<number>(0);`;
     }
   };
 
@@ -453,18 +465,6 @@ ${performanceRefs}
     const frameTime = now - lastFrameTimeRef.current;
     lastFrameTimeRef.current = now;
 
-    // Adaptive frame skipping
-    if (frameTime > 20 && adaptiveSkipRef.current < 3) {
-      adaptiveSkipRef.current++;
-    } else if (frameTime < 12 && adaptiveSkipRef.current > 0) {
-      adaptiveSkipRef.current--;
-    }
-
-    const baseSkip = pCount > 20000 ? 2 : pCount > 10000 ? 1 : 0;
-    const skipFrames = Math.max(baseSkip, adaptiveSkipRef.current);
-    frameCountRef.current++;
-    const shouldRender = frameCountRef.current % (skipFrames + 1) === 0;
-
     // Update activated particles count for sequential animation
     if (CONFIG.enableInitialAnimation && particlesActivatedRef.current < pCount) {
       const elapsed = (now - animationStartTimeRef.current) / 1000;
@@ -559,12 +559,6 @@ ${physicsCode}
       p.y += p.vy;
     }
 
-    // Skip rendering on some frames for performance
-    if (!shouldRender) {
-      animationRef.current = requestAnimationFrame(() => animate(ctx, width, height));
-      return;
-    }
-
     // Trails: use semi-transparent fill instead of clear
     ${config.enableTrails ? `// Parse hex color to RGB for trails
     const hexToRgb = (hex: string) => {
@@ -621,7 +615,7 @@ ${config.enableConnections ? `
       const p = particlesRef.current[i];
       ${config.enableVelocityColor ? `// Calculate display color with velocity shift
       const velocity = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const displayColor = shiftColorByVelocity(p.color, velocity, CONFIG.velocityColorIntensity, CONFIG.velocityColorMode, CONFIG.velocityColorTarget);` : 'const displayColor = p.color;'}
+      const displayColor = shiftColorByVelocity(p.color, velocity, CONFIG.velocityColorIntensity, CONFIG.velocityColorMode, CONFIG.velocityColorTarget, p);` : 'const displayColor = p.color;'}
       const targetMap = p.masked ? maskedColorGroups : colorGroups;
       if (!targetMap.has(displayColor)) targetMap.set(displayColor, []);
       targetMap.get(displayColor)!.push(p);
@@ -657,7 +651,8 @@ ${config.enableConnections ? `
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    // Use alpha: false for better performance and to prevent flickering on Safari/iOS
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
     // Set canvas size to match image dimensions
@@ -665,6 +660,10 @@ ${config.enableConnections ? `
     canvas.width = IMG_WIDTH * dpr;
     canvas.height = IMG_HEIGHT * dpr;
     ctx.scale(dpr, dpr);
+
+    // Fill with background color initially
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, IMG_WIDTH, IMG_HEIGHT);
 
     initParticles();
 

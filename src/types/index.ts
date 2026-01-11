@@ -4,7 +4,7 @@ export type RenderMode = "circles" | "squares" | "auto"; // Legacy - kept for co
 export type ColorFilter = "none" | "grayscale" | "sepia" | "inverted" | "saturated" | "desaturated" | "warm" | "cool" | "vintage";
 export type ParticleShape = "circle" | "square" | "triangle" | "star" | "heart" | "diamond";
 export type IdleAnimationMode = "float" | "turbulence" | "wave" | "pulse";
-export type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "saturation";
+export type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "saturation" | "rainbow";
 
 // Optional mask for custom particle grouping
 export interface OptionalMask {
