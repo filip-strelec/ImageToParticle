@@ -25,6 +25,8 @@ export default function ParticlePreview({
   const mouseRef = useRef({ x: -1000, y: -1000 });
   const animationRef = useRef<number>(0);
   const frameCountRef = useRef<number>(0);
+  const lastFrameTimeRef = useRef<number>(0); // For FPS-based adaptive skipping
+  const adaptiveSkipRef = useRef<number>(0); // Dynamic skip count based on actual performance
   const animationStartTimeRef = useRef<number>(0);
   const particlesActivatedRef = useRef<number>(0); // How many particles have been "shot" so far
   const [particleCount, setParticleCount] = useState(0); // Track particle count for display
@@ -97,81 +99,90 @@ export default function ParticlePreview({
 
   // Animation loop
   const animate = useCallback((ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, width: number, height: number) => {
+    const now = performance.now();
     const mouse = mouseRef.current;
     const mouseRadiusSq = config.mouseRadius * config.mouseRadius;
-    const particleCount = particlesRef.current.length;
+    const pCount = particlesRef.current.length;
 
-    // Adaptive frame skipping for performance with large particle counts
-    const skipFrames = particleCount > 20000 ? 2 : particleCount > 10000 ? 1 : 0;
+    // Performance-based adaptive frame skipping
+    const frameTime = now - lastFrameTimeRef.current;
+    lastFrameTimeRef.current = now;
+
+    // If frame took longer than 20ms (< 50fps), increase skip count
+    // If frame took less than 12ms (> 80fps), decrease skip count
+    if (frameTime > 20 && adaptiveSkipRef.current < 3) {
+      adaptiveSkipRef.current++;
+    } else if (frameTime < 12 && adaptiveSkipRef.current > 0) {
+      adaptiveSkipRef.current--;
+    }
+
+    // Combine particle-count based skipping with performance-based skipping
+    const baseSkip = pCount > 20000 ? 2 : pCount > 10000 ? 1 : 0;
+    const skipFrames = Math.max(baseSkip, adaptiveSkipRef.current);
     frameCountRef.current++;
-
     const shouldRender = frameCountRef.current % (skipFrames + 1) === 0;
 
     // Update how many particles should be activated (sequential shooting)
-    if (config.enableInitialAnimation && particlesActivatedRef.current < particleCount) {
-      const elapsed = (performance.now() - animationStartTimeRef.current) / 1000; // seconds
-      const shouldBeActivated = Math.floor(elapsed * config.particlesPerSecond);
-      particlesActivatedRef.current = Math.min(shouldBeActivated, particleCount);
+    if (config.enableInitialAnimation && particlesActivatedRef.current < pCount) {
+      const elapsed = (now - animationStartTimeRef.current) / 1000;
+      particlesActivatedRef.current = Math.min(Math.floor(elapsed * config.particlesPerSecond), pCount);
     }
 
-    // Always update physics, but only render on certain frames
-    // Group particles by color for batched drawing
-    // Separate masked and non-masked particles for proper z-index layering
-    const colorGroups: Map<string, Particle[]> = new Map();
-    const maskedColorGroups: Map<string, Particle[]> = new Map();
+    const isAnimationComplete = particlesActivatedRef.current >= pCount;
 
-    const isAnimationComplete = particlesActivatedRef.current >= particleCount;
+    // Pre-compute constants
+    const mouseX = mouse.x;
+    const mouseY = mouse.y;
+    const mouseForce = config.mouseForce;
+    const mouseRadius = config.mouseRadius;
 
-    for (let i = 0; i < particlesRef.current.length; i++) {
+    // Physics loop - always runs
+    for (let i = 0; i < pCount; i++) {
       const p = particlesRef.current[i];
       const isActivated = i < particlesActivatedRef.current;
+      if (!isActivated) continue;
 
-      // Apply mouse interaction if particle is activated, not masked, and either:
-      // - Animation is complete, OR
-      // - Mouse interaction during animation is enabled
+      // Apply mouse interaction
       const allowMouseInteraction = isAnimationComplete || config.mouseInteractionDuringAnimation;
-      if (!p.masked && allowMouseInteraction && isActivated) {
-        const dx = mouse.x - p.x;
-        const dy = mouse.y - p.y;
+      if (!p.masked && allowMouseInteraction) {
+        const dx = mouseX - p.x;
+        const dy = mouseY - p.y;
         const distSq = dx * dx + dy * dy;
 
         if (distSq < mouseRadiusSq && distSq > 0) {
           const dist = Math.sqrt(distSq);
-          const force = (config.mouseRadius - dist) / config.mouseRadius;
-          const angle = Math.atan2(dy, dx);
+          const force = (mouseRadius - dist) / mouseRadius;
+          // Use normalized direction instead of atan2/cos/sin for push/pull
+          const invDist = 1 / dist;
+          const nx = dx * invDist;
+          const ny = dy * invDist;
 
           switch (config.mouseInteractionMode) {
             case "push":
-              // Push particles away from mouse
-              p.vx -= Math.cos(angle) * force * config.mouseForce;
-              p.vy -= Math.sin(angle) * force * config.mouseForce;
+              p.vx -= nx * force * mouseForce;
+              p.vy -= ny * force * mouseForce;
               break;
 
             case "pull":
-              // Pull particles toward mouse
-              p.vx += Math.cos(angle) * force * config.mouseForce;
-              p.vy += Math.sin(angle) * force * config.mouseForce;
+              p.vx += nx * force * mouseForce;
+              p.vy += ny * force * mouseForce;
               break;
 
             case "orbit":
-              // Make particles orbit around mouse
-              // Perpendicular angle for orbital motion
-              const orbitAngle = angle + Math.PI / 2;
-              const orbitForce = force * config.mouseForce * config.orbitSpeed * 0.3;
-              p.vx += Math.cos(orbitAngle) * orbitForce;
-              p.vy += Math.sin(orbitAngle) * orbitForce;
-              // Also add slight pull toward mouse to maintain orbit
-              p.vx += Math.cos(angle) * force * config.mouseForce * 0.1;
-              p.vy += Math.sin(angle) * force * config.mouseForce * 0.1;
+              // Perpendicular direction for orbital motion (rotate 90°: [-ny, nx])
+              const orbitForce = force * mouseForce * config.orbitSpeed * 0.3;
+              p.vx += (-ny) * orbitForce;
+              p.vy += nx * orbitForce;
+              // Slight pull toward mouse
+              p.vx += nx * force * mouseForce * 0.1;
+              p.vy += ny * force * mouseForce * 0.1;
               break;
 
             case "turbulence":
-              // Create chaotic turbulent motion
-              const time = performance.now() * 0.001;
-              // Use particle position and time for pseudo-random turbulence
+              const time = now * 0.001;
               const turbulenceX = Math.sin(p.x * 0.01 + time * 2) * Math.cos(p.y * 0.01 + time);
               const turbulenceY = Math.cos(p.x * 0.01 + time) * Math.sin(p.y * 0.01 + time * 1.5);
-              const turbulenceForce = force * config.mouseForce * config.turbulenceIntensity * 0.5;
+              const turbulenceForce = force * mouseForce * config.turbulenceIntensity * 0.5;
               p.vx += turbulenceX * turbulenceForce;
               p.vy += turbulenceY * turbulenceForce;
               break;
@@ -179,71 +190,84 @@ export default function ParticlePreview({
         }
       }
 
-      // Only move particles that have been activated
-      if (isActivated) {
-        // Calculate return speed based on particle speed and bounce settings
-        let returnSpeed = config.returnSpeed * config.particleSpeed;
-        let friction = config.friction;
+      // Calculate return speed based on particle speed and bounce settings
+      let returnSpeed = config.returnSpeed * config.particleSpeed;
+      let friction = config.friction;
 
-        // Apply bounce effect if enabled (overshoot and spring back)
-        if (config.enableBounce && !isAnimationComplete) {
-          // Bounce intensity affects how much the particle overshoots
-          // Lower return speed = more overshoot
-          returnSpeed = config.returnSpeed * (0.1 / config.bounceIntensity);
-          // Bounce damping controls how quickly the oscillation settles
-          friction = config.bounceDamping;
-        }
-
-        p.vx += (p.originX - p.x) * returnSpeed;
-        p.vy += (p.originY - p.y) * returnSpeed;
-        p.vx *= friction;
-        p.vy *= friction;
-        p.x += p.vx;
-        p.y += p.vy;
-
-        if (shouldRender) {
-          // Separate masked and non-masked particles for proper layering
-          const targetMap = p.masked ? maskedColorGroups : colorGroups;
-          if (!targetMap.has(p.color)) {
-            targetMap.set(p.color, []);
-          }
-          targetMap.get(p.color)!.push(p);
-        }
+      if (config.enableBounce && !isAnimationComplete) {
+        returnSpeed = config.returnSpeed * (0.1 / config.bounceIntensity);
+        friction = config.bounceDamping;
       }
+
+      p.vx += (p.originX - p.x) * returnSpeed;
+      p.vy += (p.originY - p.y) * returnSpeed;
+      p.vx *= friction;
+      p.vy *= friction;
+      p.x += p.vx;
+      p.y += p.vy;
     }
 
-    // Only render if we should this frame
-    if (shouldRender) {
-      // Clear using logical dimensions (not buffer dimensions)
-      ctx.clearRect(0, 0, width, height);
+    // Skip rendering on some frames for performance
+    if (!shouldRender) {
+      animationRef.current = requestAnimationFrame(() => animate(ctx, canvas, width, height));
+      return;
+    }
 
-      // Draw non-masked particles first (bottom layer)
-      for (const [color, particles] of colorGroups) {
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.85;
+    // Clear and render
+    ctx.clearRect(0, 0, width, height);
+
+    // Use squares instead of circles when performance is very bad
+    const useSquares = adaptiveSkipRef.current >= 2;
+    const TWO_PI = Math.PI * 2;
+
+    // Group particles by color for batched drawing
+    const colorGroups: Map<string, Particle[]> = new Map();
+    const maskedColorGroups: Map<string, Particle[]> = new Map();
+
+    for (let i = 0; i < particlesActivatedRef.current; i++) {
+      const p = particlesRef.current[i];
+      const targetMap = p.masked ? maskedColorGroups : colorGroups;
+      if (!targetMap.has(p.color)) targetMap.set(p.color, []);
+      targetMap.get(p.color)!.push(p);
+    }
+
+    // Draw non-masked particles first (bottom layer)
+    for (const [color, particles] of colorGroups) {
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
+      if (useSquares) {
+        for (const p of particles) {
+          ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+        }
+      } else {
         ctx.beginPath();
         for (const p of particles) {
           ctx.moveTo(p.x + p.size, p.y);
-          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
         }
         ctx.fill();
       }
+    }
 
-      // Draw masked particles on top (top layer - highest z-index)
-      for (const [color, particles] of maskedColorGroups) {
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.85;
+    // Draw masked particles on top (top layer)
+    for (const [color, particles] of maskedColorGroups) {
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
+      if (useSquares) {
+        for (const p of particles) {
+          ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+        }
+      } else {
         ctx.beginPath();
         for (const p of particles) {
           ctx.moveTo(p.x + p.size, p.y);
-          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
         }
         ctx.fill();
       }
-
-      ctx.globalAlpha = 1;
     }
 
+    ctx.globalAlpha = 1;
     animationRef.current = requestAnimationFrame(() => animate(ctx, canvas, width, height));
   }, [config]);
 
