@@ -1,8 +1,89 @@
 "use client";
 
-import { Settings, RotateCcw, Palette, Zap, MousePointer, Sparkles, Layers } from "lucide-react";
-import { ParticleConfig, ImageData, ShootingDirection, MouseInteractionMode, RenderMode } from "@/types";
-import { useMemo } from "react";
+import { Settings, RotateCcw, Palette, Zap, MousePointer, Sparkles, Layers, Download, Upload } from "lucide-react";
+import { ParticleConfig, ImageData, ShootingDirection, MouseInteractionMode, ColorFilter, ParticleShape, IdleAnimationMode, VelocityColorMode } from "@/types";
+import { useMemo, useRef } from "react";
+
+// Built-in presets
+const PRESETS: Record<string, Partial<ParticleConfig>> = {
+  default: {},
+  "high-quality": {
+    resolution: 2,
+    maxParticles: 100000,
+    particleShape: "circle",
+  },
+  "performance": {
+    resolution: 6,
+    maxParticles: 20000,
+    particleShape: "square",
+    autoPerformance: true,
+  },
+  "dreamy": {
+    enableTrails: true,
+    trailLength: 0.15,
+    trailBackgroundColor: "#ffffff",
+    friction: 0.92,
+    returnSpeed: 0.02,
+    enableIdleAnimation: true,
+    idleAnimationMode: "float",
+    idleAnimationSpeed: 0.5,
+    idleAnimationIntensity: 8,
+  },
+  "connected": {
+    enableConnections: true,
+    connectionDistance: 60,
+    connectionOpacity: 0.4,
+    connectionColor: "#6366f1",
+    resolution: 5,
+  },
+  "explosive": {
+    enableInitialAnimation: true,
+    shootingDirection: "all-directions",
+    particleSpeed: 3,
+    friction: 0.85,
+    enableBounce: true,
+    bounceIntensity: 2,
+  },
+  "gentle-float": {
+    enableIdleAnimation: true,
+    idleAnimationMode: "float",
+    idleAnimationSpeed: 0.3,
+    idleAnimationIntensity: 5,
+    friction: 0.95,
+    returnSpeed: 0.01,
+    enableMouseInteraction: false,
+  },
+  "turbulence-field": {
+    enableIdleAnimation: true,
+    idleAnimationMode: "turbulence",
+    idleAnimationSpeed: 0.8,
+    idleAnimationIntensity: 10,
+    friction: 0.9,
+    returnSpeed: 0.03,
+  },
+  "velocity-glow": {
+    enableVelocityColor: true,
+    velocityColorMode: "brighten",
+    velocityColorIntensity: 1.5,
+    friction: 0.88,
+    mouseForce: 20,
+  },
+  "hue-shift": {
+    enableVelocityColor: true,
+    velocityColorMode: "hue-shift",
+    velocityColorIntensity: 1.2,
+    friction: 0.9,
+    mouseForce: 15,
+  },
+  "stars": {
+    particleShape: "star",
+    resolution: 8,
+    enableIdleAnimation: true,
+    idleAnimationMode: "wave",
+    idleAnimationSpeed: 0.4,
+    idleAnimationIntensity: 3,
+  },
+};
 
 interface ControlPanelProps {
   config: ParticleConfig;
@@ -42,11 +123,55 @@ function Slider({ label, value, min, max, step = 1, onChange, suffix = "" }: Sli
 }
 
 export default function ControlPanel({ config, onChange, onReset, imageData }: ControlPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const estimatedParticles = useMemo(() => {
     const gap = config.resolution;
     const count = Math.ceil(imageData.width / gap) * Math.ceil(imageData.height / gap);
     return Math.min(count, config.maxParticles);
   }, [config.resolution, config.maxParticles, imageData.width, imageData.height]);
+
+  // Apply a preset
+  const applyPreset = (presetName: string) => {
+    if (presetName === "default") {
+      onReset();
+    } else {
+      const preset = PRESETS[presetName];
+      if (preset) {
+        onChange(preset);
+      }
+    }
+  };
+
+  // Export current config as JSON
+  const exportConfig = () => {
+    const json = JSON.stringify(config, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "particle-config.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Import config from JSON file
+  const importConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        onChange(imported);
+      } catch {
+        alert("Invalid config file");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ""; // Reset input
+  };
 
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
@@ -66,6 +191,53 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
       </div>
 
       <div className="p-4 space-y-6 max-h-[60vh] overflow-y-auto">
+        {/* Presets Section */}
+        <section>
+          <h3 className="text-sm font-medium text-indigo-400 mb-3 flex items-center gap-2">
+            <Sparkles className="w-4 h-4" /> Presets
+          </h3>
+          <div className="space-y-3">
+            <select
+              onChange={(e) => applyPreset(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200"
+              defaultValue=""
+            >
+              <option value="" disabled>Apply a preset...</option>
+              <option value="default">Default</option>
+              <option value="high-quality">High Quality</option>
+              <option value="performance">Performance</option>
+              <option value="dreamy">Dreamy (trails + float)</option>
+              <option value="connected">Connected Particles</option>
+              <option value="explosive">Explosive Entry</option>
+              <option value="gentle-float">Gentle Float</option>
+              <option value="velocity-glow">Velocity Glow</option>
+              <option value="stars">Star Particles</option>
+            </select>
+
+            <div className="flex gap-2">
+              <button
+                onClick={exportConfig}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
+              >
+                <Download className="w-4 h-4" /> Export
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition-colors"
+              >
+                <Upload className="w-4 h-4" /> Import
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={importConfig}
+                className="hidden"
+              />
+            </div>
+          </div>
+        </section>
+
         {/* Resolution Section */}
         <section>
           <h3 className="text-sm font-medium text-indigo-400 mb-3 flex items-center gap-2">
@@ -119,21 +291,45 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
               Estimated particles: ~{estimatedParticles.toLocaleString()}
             </p>
 
-            <div className="space-y-2 pt-2 border-t border-gray-800">
-              <label className="text-sm text-gray-400">Render Mode</label>
+            <div className="space-y-3 pt-2 border-t border-gray-800">
+              <label className="text-sm text-gray-400">Particle Shape</label>
               <select
-                value={config.renderMode}
-                onChange={(e) => onChange({ renderMode: e.target.value as RenderMode })}
+                value={config.particleShape}
+                onChange={(e) => {
+                  const shape = e.target.value as ParticleShape;
+                  // Sync renderMode for code generator compatibility
+                  const renderMode = shape === "square" ? "squares" : "circles";
+                  onChange({ particleShape: shape, renderMode });
+                }}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="circles">Circles (Quality)</option>
-                <option value="squares">Squares (Performance)</option>
-                <option value="auto">Auto (Detect Performance)</option>
+                <option value="square">Square (Fastest)</option>
+                <option value="circle">Circle (Fast)</option>
+                <option value="diamond">Diamond (Medium)</option>
+                <option value="triangle">Triangle (Medium)</option>
+                <option value="star">Star (Slow)</option>
+                <option value="heart">Heart (Slow)</option>
               </select>
+              <p className="text-xs text-gray-500 mb-2">
+                {config.particleShape === "square" && "Best performance. Simple filled rectangles."}
+                {config.particleShape === "circle" && "Good performance. Uses arc drawing."}
+                {config.particleShape === "diamond" && "Moderate performance. Path-based shape."}
+                {config.particleShape === "triangle" && "Moderate performance. Path-based shape."}
+                {config.particleShape === "star" && "Lower performance. Complex multi-point path."}
+                {config.particleShape === "heart" && "Lower performance. Bezier curve paths."}
+              </p>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.autoPerformance}
+                  onChange={(e) => onChange({ autoPerformance: e.target.checked })}
+                  className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+                />
+                <span className="text-sm text-gray-300">Auto Performance Mode</span>
+              </label>
               <p className="text-xs text-gray-500">
-                {config.renderMode === "circles" && "Always renders circular particles for best quality."}
-                {config.renderMode === "squares" && "Always renders square particles for best performance."}
-                {config.renderMode === "auto" && "Measures FPS during activity, then locks to best mode."}
+                Automatically switch to squares when low FPS is detected.
               </p>
             </div>
           </div>
@@ -145,19 +341,31 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
             <MousePointer className="w-4 h-4" /> Physics & Interaction
           </h3>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm text-gray-400">Mouse Interaction Mode</label>
-              <select
-                value={config.mouseInteractionMode}
-                onChange={(e) => onChange({ mouseInteractionMode: e.target.value as MouseInteractionMode })}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="push">Push Away</option>
-                <option value="pull">Pull Toward</option>
-                <option value="orbit">Orbital Motion</option>
-                <option value="turbulence">Turbulence</option>
-              </select>
-            </div>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.enableMouseInteraction}
+                onChange={(e) => onChange({ enableMouseInteraction: e.target.checked })}
+                className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+              />
+              <span className="text-sm text-gray-300">Enable mouse interaction</span>
+            </label>
+
+            {config.enableMouseInteraction && (
+              <div className="space-y-2">
+                <label className="text-sm text-gray-400">Mouse Interaction Mode</label>
+                <select
+                  value={config.mouseInteractionMode}
+                  onChange={(e) => onChange({ mouseInteractionMode: e.target.value as MouseInteractionMode })}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="push">Push Away</option>
+                  <option value="pull">Pull Toward</option>
+                  <option value="orbit">Orbital Motion</option>
+                  <option value="turbulence">Turbulence</option>
+                </select>
+              </div>
+            )}
 
             <Slider
               label="Friction"
@@ -175,45 +383,49 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
               step={0.001}
               onChange={(v) => onChange({ returnSpeed: v })}
             />
-            <Slider
-              label="Mouse Radius"
-              value={config.mouseRadius}
-              min={20}
-              max={200}
-              step={10}
-              onChange={(v) => onChange({ mouseRadius: v })}
-              suffix="px"
-            />
-            <Slider
-              label="Mouse Force"
-              value={config.mouseForce}
-              min={5}
-              max={30}
-              onChange={(v) => onChange({ mouseForce: v })}
-            />
+            {config.enableMouseInteraction && (
+              <>
+                <Slider
+                  label="Mouse Radius"
+                  value={config.mouseRadius}
+                  min={20}
+                  max={200}
+                  step={10}
+                  onChange={(v) => onChange({ mouseRadius: v })}
+                  suffix="px"
+                />
+                <Slider
+                  label="Mouse Force"
+                  value={config.mouseForce}
+                  min={5}
+                  max={30}
+                  onChange={(v) => onChange({ mouseForce: v })}
+                />
 
-            {config.mouseInteractionMode === "orbit" && (
-              <Slider
-                label="Orbit Speed"
-                value={config.orbitSpeed}
-                min={0.5}
-                max={3}
-                step={0.1}
-                onChange={(v) => onChange({ orbitSpeed: v })}
-                suffix="x"
-              />
-            )}
+                {config.mouseInteractionMode === "orbit" && (
+                  <Slider
+                    label="Orbit Speed"
+                    value={config.orbitSpeed}
+                    min={0.5}
+                    max={3}
+                    step={0.1}
+                    onChange={(v) => onChange({ orbitSpeed: v })}
+                    suffix="x"
+                  />
+                )}
 
-            {config.mouseInteractionMode === "turbulence" && (
-              <Slider
-                label="Turbulence Intensity"
-                value={config.turbulenceIntensity}
-                min={0.5}
-                max={3}
-                step={0.1}
-                onChange={(v) => onChange({ turbulenceIntensity: v })}
-                suffix="x"
-              />
+                {config.mouseInteractionMode === "turbulence" && (
+                  <Slider
+                    label="Turbulence Intensity"
+                    value={config.turbulenceIntensity}
+                    min={0.5}
+                    max={3}
+                    step={0.1}
+                    onChange={(v) => onChange({ turbulenceIntensity: v })}
+                    suffix="x"
+                  />
+                )}
+              </>
             )}
           </div>
         </section>
@@ -404,6 +616,221 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
                 max={32}
                 onChange={(v) => onChange({ clusterCount: v })}
               />
+            )}
+
+            {/* Color Filter Dropdown */}
+            <div className="space-y-2">
+              <span className="text-sm text-gray-400">Color Filter</span>
+              <select
+                value={config.colorFilter}
+                onChange={(e) => onChange({ colorFilter: e.target.value as ColorFilter })}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200"
+              >
+                <option value="none">None</option>
+                <option value="grayscale">Grayscale</option>
+                <option value="sepia">Sepia</option>
+                <option value="inverted">Inverted</option>
+                <option value="saturated">Saturated</option>
+                <option value="desaturated">Desaturated</option>
+                <option value="warm">Warm</option>
+                <option value="cool">Cool</option>
+                <option value="vintage">Vintage</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        {/* Effects Section */}
+        <section>
+          <h3 className="text-sm font-medium text-indigo-400 mb-3 flex items-center gap-2">
+            <Sparkles className="w-4 h-4" /> Effects
+          </h3>
+          <div className="space-y-4">
+            {/* Particle Trails */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.enableTrails}
+                onChange={(e) => onChange({ enableTrails: e.target.checked })}
+                className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+              />
+              <span className="text-sm text-gray-300">Particle trails</span>
+            </label>
+            {config.enableTrails && (
+              <>
+                <Slider
+                  label="Trail Length"
+                  value={config.trailLength}
+                  min={0.05}
+                  max={0.5}
+                  step={0.01}
+                  onChange={(v) => onChange({ trailLength: v })}
+                />
+                <div className="space-y-2">
+                  <span className="text-sm text-gray-400">Trail Background</span>
+                  <input
+                    type="color"
+                    value={config.trailBackgroundColor}
+                    onChange={(e) => onChange({ trailBackgroundColor: e.target.value })}
+                    className="w-full h-8 rounded bg-gray-800 border border-gray-700 cursor-pointer"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Particle Connections */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.enableConnections}
+                onChange={(e) => onChange({ enableConnections: e.target.checked })}
+                className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+              />
+              <span className="text-sm text-gray-300">Particle connections</span>
+            </label>
+            {config.enableConnections && (
+              <>
+                <Slider
+                  label="Connection Distance"
+                  value={config.connectionDistance}
+                  min={10}
+                  max={150}
+                  step={5}
+                  onChange={(v) => onChange({ connectionDistance: v })}
+                  suffix="px"
+                />
+                <Slider
+                  label="Connection Opacity"
+                  value={config.connectionOpacity}
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  onChange={(v) => onChange({ connectionOpacity: v })}
+                />
+                <div className="space-y-2">
+                  <span className="text-sm text-gray-400">Connection Color</span>
+                  <input
+                    type="color"
+                    value={config.connectionColor}
+                    onChange={(e) => onChange({ connectionColor: e.target.value })}
+                    className="w-full h-8 rounded bg-gray-800 border border-gray-700 cursor-pointer"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Idle Animation */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.enableIdleAnimation}
+                onChange={(e) => onChange({ enableIdleAnimation: e.target.checked })}
+                className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+              />
+              <span className="text-sm text-gray-300">Idle animation</span>
+            </label>
+            {config.enableIdleAnimation && (
+              <>
+                <div className="space-y-2">
+                  <span className="text-sm text-gray-400">Animation Mode</span>
+                  <select
+                    value={config.idleAnimationMode}
+                    onChange={(e) => onChange({ idleAnimationMode: e.target.value as IdleAnimationMode })}
+                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200"
+                  >
+                    <option value="float">Float (Perlin noise)</option>
+                    <option value="turbulence">Turbulence (Wave field)</option>
+                    <option value="wave">Wave (Sine motion)</option>
+                    <option value="pulse">Pulse (Breathing)</option>
+                  </select>
+                  <p className="text-xs text-gray-500">
+                    {config.idleAnimationMode === "float" && "Particles float gently in random directions."}
+                    {config.idleAnimationMode === "turbulence" && "Particles follow turbulent currents across the canvas. Stops near mouse."}
+                    {config.idleAnimationMode === "wave" && "Particles move in a wave pattern."}
+                    {config.idleAnimationMode === "pulse" && "Particles pulse in and out from center."}
+                  </p>
+                </div>
+                <Slider
+                  label="Idle Speed"
+                  value={config.idleAnimationSpeed}
+                  min={0.1}
+                  max={2}
+                  step={0.1}
+                  onChange={(v) => onChange({ idleAnimationSpeed: v })}
+                  suffix="x"
+                />
+                <Slider
+                  label="Idle Intensity"
+                  value={config.idleAnimationIntensity}
+                  min={1}
+                  max={20}
+                  step={1}
+                  onChange={(v) => onChange({ idleAnimationIntensity: v })}
+                  suffix="px"
+                />
+                {config.idleAnimationMode === "turbulence" && (
+                  <Slider
+                    label="Turbulence Mouse Radius"
+                    value={config.turbulenceMouseRadius}
+                    min={50}
+                    max={3000}
+                    step={50}
+                    onChange={(v) => onChange({ turbulenceMouseRadius: v })}
+                    suffix="px"
+                  />
+                )}
+              </>
+            )}
+
+            {/* Velocity Color */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.enableVelocityColor}
+                onChange={(e) => onChange({ enableVelocityColor: e.target.checked })}
+                className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+              />
+              <span className="text-sm text-gray-300">Velocity color shift</span>
+            </label>
+            {config.enableVelocityColor && (
+              <>
+                <div className="space-y-2">
+                  <span className="text-sm text-gray-400">Color Mode</span>
+                  <select
+                    value={config.velocityColorMode}
+                    onChange={(e) => onChange({ velocityColorMode: e.target.value as VelocityColorMode })}
+                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200"
+                  >
+                    <option value="brighten">Brighten</option>
+                    <option value="darken">Darken</option>
+                    <option value="hue-shift">Hue Shift</option>
+                    <option value="saturation">Saturation Boost</option>
+                  </select>
+                </div>
+                <Slider
+                  label="Color Shift Intensity"
+                  value={config.velocityColorIntensity}
+                  min={0.1}
+                  max={5}
+                  step={0.1}
+                  onChange={(v) => onChange({ velocityColorIntensity: v })}
+                  suffix="x"
+                />
+                {config.velocityColorMode === "brighten" && (
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400">Target Color</label>
+                    <input
+                      type="color"
+                      value={config.velocityColorTarget || "#ffffff"}
+                      onChange={(e) => onChange({ velocityColorTarget: e.target.value })}
+                      className="w-full h-10 bg-gray-800 border border-gray-700 rounded-lg cursor-pointer"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Color to shift towards when particles move faster.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </section>

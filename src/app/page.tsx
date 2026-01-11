@@ -37,8 +37,29 @@ const defaultConfig: ParticleConfig = {
   bounceIntensity: 1,
   bounceDamping: 0.85,
   mouseInteractionDuringAnimation: false,
-  renderMode: "circles",
+  renderMode: "circles", // Legacy - kept for code generator
   maskedParticlesOnTop: true,
+  colorFilter: "none",
+  // New features
+  enableMouseInteraction: true,
+  particleShape: "circle",
+  autoPerformance: false,
+  enableTrails: false,
+  trailLength: 0.15,
+  trailBackgroundColor: "#ffffff",
+  enableConnections: false,
+  connectionDistance: 50,
+  connectionOpacity: 0.3,
+  connectionColor: "#ffffff",
+  enableIdleAnimation: false,
+  idleAnimationMode: "float",
+  idleAnimationSpeed: 0.5,
+  idleAnimationIntensity: 5,
+  turbulenceMouseRadius: 200,
+  enableVelocityColor: false,
+  velocityColorMode: "brighten",
+  velocityColorIntensity: 1,
+  velocityColorTarget: "#ffffff",
 };
 
 export default function Home() {

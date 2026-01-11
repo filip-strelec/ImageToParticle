@@ -1,4 +1,71 @@
-import { ImageData, ParticleConfig, ParticleData, OptionalMask, ParticleEdit } from "@/types";
+import { ImageData, ParticleConfig, ParticleData, OptionalMask, ParticleEdit, ColorFilter } from "@/types";
+
+/**
+ * Apply color filter to RGB values
+ */
+export function applyColorFilter(r: number, g: number, b: number, filter: ColorFilter): [number, number, number] {
+  switch (filter) {
+    case "grayscale": {
+      const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      return [gray, gray, gray];
+    }
+    case "sepia": {
+      return [
+        Math.min(255, Math.round(0.393 * r + 0.769 * g + 0.189 * b)),
+        Math.min(255, Math.round(0.349 * r + 0.686 * g + 0.168 * b)),
+        Math.min(255, Math.round(0.272 * r + 0.534 * g + 0.131 * b)),
+      ];
+    }
+    case "inverted":
+      return [255 - r, 255 - g, 255 - b];
+    case "saturated": {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      const factor = 1.5;
+      return [
+        Math.min(255, Math.max(0, Math.round(gray + factor * (r - gray)))),
+        Math.min(255, Math.max(0, Math.round(gray + factor * (g - gray)))),
+        Math.min(255, Math.max(0, Math.round(gray + factor * (b - gray)))),
+      ];
+    }
+    case "desaturated": {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      const factor = 0.5;
+      return [
+        Math.round(gray + factor * (r - gray)),
+        Math.round(gray + factor * (g - gray)),
+        Math.round(gray + factor * (b - gray)),
+      ];
+    }
+    case "warm":
+      return [
+        Math.min(255, r + 20),
+        g,
+        Math.max(0, b - 20),
+      ];
+    case "cool":
+      return [
+        Math.max(0, r - 20),
+        g,
+        Math.min(255, b + 20),
+      ];
+    case "vintage": {
+      // Sepia + slight desaturation + warm tones
+      const sepia: [number, number, number] = [
+        Math.min(255, Math.round(0.393 * r + 0.769 * g + 0.189 * b)),
+        Math.min(255, Math.round(0.349 * r + 0.686 * g + 0.168 * b)),
+        Math.min(255, Math.round(0.272 * r + 0.534 * g + 0.131 * b)),
+      ];
+      return [
+        Math.min(255, sepia[0] + 10),
+        sepia[1],
+        Math.max(0, sepia[2] - 15),
+      ];
+    }
+    case "none":
+    default:
+      return [r, g, b];
+  }
+}
 
 /**
  * Extract particle data from image pixels
@@ -11,7 +78,7 @@ export function extractParticleData(
   particleEdits?: ParticleEdit[]
 ): ParticleData[] {
   const { width, height, pixels } = imageData;
-  const { resolution, alphaThreshold, maxParticles, useOriginalColors, customColors, colorClustering, clusterCount } = config;
+  const { resolution, alphaThreshold, maxParticles, useOriginalColors, customColors, colorClustering, clusterCount, colorFilter } = config;
 
   // If clustering is enabled, first quantize the image colors
   let palette: string[] | null = null;
@@ -22,14 +89,17 @@ export function extractParticleData(
   const particles: ParticleData[] = [];
   const gap = Math.max(1, resolution);
 
+  // Offset by half gap so particles aren't cropped at edges
+  const halfGap = Math.floor(gap / 2);
+
   // Create a set of delete zones for efficient checking
   const deleteEdits = particleEdits?.filter(e => e.type === "delete") || [];
 
   // First pass: collect all potential particles from image
   const potentialParticles: ParticleData[] = [];
 
-  for (let y = 0; y < height; y += gap) {
-    for (let x = 0; x < width; x += gap) {
+  for (let y = halfGap; y < height - halfGap; y += gap) {
+    for (let x = halfGap; x < width - halfGap; x += gap) {
       const index = (y * width + x) * 4;
       const r = pixels[index];
       const g = pixels[index + 1];
@@ -65,14 +135,17 @@ export function extractParticleData(
         }
       }
 
+      // Apply color filter
+      const [fr, fg, fb] = applyColorFilter(r, g, b, colorFilter);
+
       // Determine color
       let color: string;
       if (useOriginalColors) {
         if (palette) {
           // Find nearest color in palette
-          color = findNearestColor([r, g, b], palette);
+          color = findNearestColor([fr, fg, fb], palette);
         } else {
-          color = `rgb(${r},${g},${b})`;
+          color = `rgb(${fr},${fg},${fb})`;
         }
       } else {
         color = customColors[Math.floor(Math.random() * customColors.length)];

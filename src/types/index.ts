@@ -1,6 +1,10 @@
 export type ShootingDirection = "top-to-bottom" | "all-directions";
 export type MouseInteractionMode = "push" | "pull" | "orbit" | "turbulence";
-export type RenderMode = "circles" | "squares" | "auto";
+export type RenderMode = "circles" | "squares" | "auto"; // Legacy - kept for compatibility
+export type ColorFilter = "none" | "grayscale" | "sepia" | "inverted" | "saturated" | "desaturated" | "warm" | "cool" | "vintage";
+export type ParticleShape = "circle" | "square" | "triangle" | "star" | "heart" | "diamond";
+export type IdleAnimationMode = "float" | "turbulence" | "wave" | "pulse";
+export type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "saturation";
 
 // Optional mask for custom particle grouping
 export interface OptionalMask {
@@ -49,8 +53,29 @@ export interface ParticleConfig {
   bounceIntensity: number;    // How much particles overshoot (0.5-2)
   bounceDamping: number;      // How quickly bounce settles (0.7-0.95)
   mouseInteractionDuringAnimation: boolean; // Allow mouse interaction during initial animation
-  renderMode: RenderMode;        // How to render particles: circles, squares, or auto (performance-based)
+  renderMode: RenderMode;        // Legacy - kept for code generator compatibility
   maskedParticlesOnTop: boolean; // If true, masked particles render above non-masked; if false, below
+  colorFilter: ColorFilter;      // Color filter to apply to particles
+  // New features
+  enableMouseInteraction: boolean; // Enable/disable mouse interactions entirely
+  particleShape: ParticleShape;    // Shape of particles (also determines render mode)
+  autoPerformance: boolean;        // Auto-switch to squares when performance is low
+  enableTrails: boolean;           // Enable motion blur/trails
+  trailLength: number;             // Trail opacity decay (0.1-0.5), lower = longer trails
+  trailBackgroundColor: string;    // Background color for trails (usually white or black)
+  enableConnections: boolean;      // Draw lines between nearby particles
+  connectionDistance: number;      // Max distance for connections (10-150)
+  connectionOpacity: number;       // Opacity of connection lines (0.1-1)
+  connectionColor: string;         // Color of connection lines
+  enableIdleAnimation: boolean;    // Subtle floating when mouse not active
+  idleAnimationMode: IdleAnimationMode; // Type of idle animation
+  idleAnimationSpeed: number;      // Speed of idle animation (0.1-2)
+  idleAnimationIntensity: number;  // How much particles float (1-20)
+  turbulenceMouseRadius: number;   // Radius around mouse where turbulence fades (50-3000)
+  enableVelocityColor: boolean;    // Color shift based on velocity
+  velocityColorMode: VelocityColorMode; // How velocity affects color
+  velocityColorIntensity: number;  // How much color shifts (0.1-5)
+  velocityColorTarget: string;     // Target color for brighten mode (hex color)
 }
 
 export interface ImageData {

@@ -436,7 +436,7 @@ export default function MaskingTool({
       if (maskCanvas) {
         const ctx = maskCanvas.getContext("2d");
         if (ctx) {
-          const imgData = new ImageData(previousData, maskCanvas.width, maskCanvas.height);
+          const imgData = new ImageData(new Uint8ClampedArray(previousData), maskCanvas.width, maskCanvas.height);
           ctx.putImageData(imgData, 0, 0);
           onMaskChange(previousData);
         }

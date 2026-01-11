@@ -56,6 +56,169 @@ function generatePhysicsCode(config: ParticleConfig): string {
   }
 }
 
+// Generate helper functions for new features
+function generateHelperFunctions(config: ParticleConfig): string {
+  let helpers = "";
+
+  if (config.enableIdleAnimation) {
+    helpers += `
+// Simple noise for idle animation
+function noise2D(x: number, y: number): number {
+  const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return (n - Math.floor(n)) * 2 - 1;
+}
+
+function smoothNoise(x: number, y: number, t: number): number {
+  return (
+    noise2D(x + t * 0.3, y + t * 0.2) * 0.5 +
+    noise2D(x * 0.5 + t * 0.5, y * 0.5) * 0.3 +
+    noise2D(x * 0.25 + t * 0.7, y * 0.25 + t * 0.4) * 0.2
+  );
+}
+`;
+  }
+
+  if (config.enableVelocityColor) {
+    helpers += `
+// Parse color to RGB for velocity color shifting
+function parseColorToRGB(color: string): [number, number, number] {
+  if (color.startsWith("rgb")) {
+    const match = color.match(/\\d+/g);
+    if (match) return [parseInt(match[0]), parseInt(match[1]), parseInt(match[2])];
+  }
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    return [
+      parseInt(hex.slice(0, 2), 16),
+      parseInt(hex.slice(2, 4), 16),
+      parseInt(hex.slice(4, 6), 16),
+    ];
+  }
+  return [255, 255, 255];
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return [h, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  let r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "saturation";
+
+function shiftColorByVelocity(color: string, velocity: number, intensity: number, mode: VelocityColorMode, targetColor: string): string {
+  const [r, g, b] = parseColorToRGB(color);
+  const factor = Math.min(velocity * intensity * 10, 100);
+  switch (mode) {
+    case "brighten": {
+      const [tr, tg, tb] = parseColorToRGB(targetColor);
+      const t = Math.min(factor / 100, 1);
+      const nr = Math.round(r + (tr - r) * t);
+      const ng = Math.round(g + (tg - g) * t);
+      const nb = Math.round(b + (tb - b) * t);
+      return \`rgb(\${nr},\${ng},\${nb})\`;
+    }
+    case "darken":
+      return \`rgb(\${Math.max(0, r - factor)},\${Math.max(0, g - factor)},\${Math.max(0, b - factor)})\`;
+    case "hue-shift": {
+      const [h, s, l] = rgbToHsl(r, g, b);
+      const [nr, ng, nb] = hslToRgb((h + factor * 0.01) % 1, s, l);
+      return \`rgb(\${nr},\${ng},\${nb})\`;
+    }
+    case "saturation": {
+      const [h, s, l] = rgbToHsl(r, g, b);
+      const [nr, ng, nb] = hslToRgb(h, Math.min(1, s + factor * 0.01), l);
+      return \`rgb(\${nr},\${ng},\${nb})\`;
+    }
+    default:
+      return color;
+  }
+}
+`;
+  }
+
+  return helpers;
+}
+
+// Generate shape drawing code
+function generateShapeDrawCode(config: ParticleConfig): string {
+  if (config.particleShape === "circle") {
+    return `ctx.moveTo(x + size, y);
+          ctx.arc(x, y, size, 0, TWO_PI);`;
+  }
+
+  return `switch (CONFIG.particleShape) {
+        case "circle":
+          ctx.moveTo(x + size, y);
+          ctx.arc(x, y, size, 0, TWO_PI);
+          break;
+        case "square":
+          ctx.rect(x - size, y - size, size * 2, size * 2);
+          break;
+        case "triangle":
+          ctx.moveTo(x, y - size);
+          ctx.lineTo(x + size, y + size);
+          ctx.lineTo(x - size, y + size);
+          ctx.closePath();
+          break;
+        case "diamond":
+          ctx.moveTo(x, y - size);
+          ctx.lineTo(x + size, y);
+          ctx.lineTo(x, y + size);
+          ctx.lineTo(x - size, y);
+          ctx.closePath();
+          break;
+        case "star":
+          for (let j = 0; j < 5; j++) {
+            const outerAngle = (j * 4 * Math.PI) / 5 - Math.PI / 2;
+            const innerAngle = outerAngle + Math.PI / 5;
+            if (j === 0) ctx.moveTo(x + Math.cos(outerAngle) * size, y + Math.sin(outerAngle) * size);
+            else ctx.lineTo(x + Math.cos(outerAngle) * size, y + Math.sin(outerAngle) * size);
+            ctx.lineTo(x + Math.cos(innerAngle) * size * 0.5, y + Math.sin(innerAngle) * size * 0.5);
+          }
+          ctx.closePath();
+          break;
+        case "heart":
+          const hs = size * 0.6;
+          ctx.moveTo(x, y + size * 0.3);
+          ctx.bezierCurveTo(x, y - hs, x - size, y - hs, x - size, y);
+          ctx.bezierCurveTo(x - size, y + hs, x, y + size, x, y + size);
+          ctx.bezierCurveTo(x, y + size, x + size, y + hs, x + size, y);
+          ctx.bezierCurveTo(x + size, y - hs, x, y - hs, x, y + size * 0.3);
+          break;
+      }`;
+}
+
 export function generateComponentCode(
   particles: ParticleData[],
   config: ParticleConfig,
@@ -151,6 +314,8 @@ export function generateComponentCode(
   const performanceRefs = generatePerformanceRefs(config.renderMode);
   const qualityDetection = generateQualityDetection(config.renderMode);
   const useSquaresCode = generateUseSquaresCode(config.renderMode);
+  const helperFunctions = generateHelperFunctions(config);
+  const shapeDrawCode = generateShapeDrawCode(config);
 
   return `"use client";
 
@@ -185,7 +350,7 @@ const IMG_HEIGHT = ${imageData.height};
 
 // Pre-computed constant for performance
 const TWO_PI = Math.PI * 2;
-
+${helperFunctions}
 // Configuration
 const CONFIG = {
   friction: ${config.friction},
@@ -206,6 +371,26 @@ const CONFIG = {
   particleSize: ${config.particleSize},
   minParticleSize: ${config.minParticleSize},
   sizeVariation: ${config.sizeVariation},
+  // New features
+  enableMouseInteraction: ${config.enableMouseInteraction},
+  particleShape: "${config.particleShape}" as const,
+  autoPerformance: ${config.autoPerformance ?? false},
+  enableTrails: ${config.enableTrails},
+  trailLength: ${config.trailLength},
+  trailBackgroundColor: "${config.trailBackgroundColor || '#ffffff'}",
+  enableConnections: ${config.enableConnections},
+  connectionDistance: ${config.connectionDistance},
+  connectionOpacity: ${config.connectionOpacity},
+  connectionColor: "${config.connectionColor || '#ffffff'}",
+  enableIdleAnimation: ${config.enableIdleAnimation},
+  idleAnimationMode: "${config.idleAnimationMode || 'float'}" as const,
+  idleAnimationSpeed: ${config.idleAnimationSpeed},
+  idleAnimationIntensity: ${config.idleAnimationIntensity},
+  turbulenceMouseRadius: ${config.turbulenceMouseRadius || 200},
+  enableVelocityColor: ${config.enableVelocityColor},
+  velocityColorMode: "${config.velocityColorMode || 'brighten'}" as const,
+  velocityColorIntensity: ${config.velocityColorIntensity},
+  velocityColorTarget: "${config.velocityColorTarget || '#ffffff'}",
 };
 
 export default function ParticleAnimation({ className = "" }: ParticleAnimationProps) {
@@ -286,11 +471,13 @@ ${performanceRefs}
     }
 
     const isAnimationComplete = particlesActivatedRef.current >= pCount;
+    const isMouseActive = mouse.x > -500 && mouse.y > -500;
 ${qualityDetection}
     // Pre-compute values outside loop
     const mouseX = mouse.x;
     const mouseY = mouse.y;
     const mouseRadius = CONFIG.mouseRadius;
+    ${config.enableIdleAnimation ? 'const idleTime = now * 0.001 * CONFIG.idleAnimationSpeed;' : ''}
 
     // Physics loop - always runs
     for (let i = 0; i < pCount; i++) {
@@ -299,7 +486,7 @@ ${qualityDetection}
       if (!isActivated) continue;
 
       // Apply mouse interaction (optimized: no trig functions)
-      const allowMouseInteraction = isAnimationComplete || CONFIG.mouseInteractionDuringAnimation;
+      const allowMouseInteraction = ${config.enableMouseInteraction ? 'CONFIG.enableMouseInteraction && ' : ''}(isAnimationComplete || CONFIG.mouseInteractionDuringAnimation);
       if (!p.masked && allowMouseInteraction) {
         const dx = mouseX - p.x;
         const dy = mouseY - p.y;
@@ -316,7 +503,51 @@ ${qualityDetection}
 ${mouseInteractionCode}
         }
       }
+${config.enableIdleAnimation ? `
+      // Apply idle animation based on mode
+      if (CONFIG.enableIdleAnimation && isAnimationComplete) {
+        const intensity = CONFIG.idleAnimationIntensity * 0.1;
+        const distToMouse = Math.sqrt((p.x - mouseX) * (p.x - mouseX) + (p.y - mouseY) * (p.y - mouseY));
+        const turbRadius = CONFIG.turbulenceMouseRadius;
+        const mouseFade = CONFIG.idleAnimationMode === "turbulence"
+          ? Math.min(1, Math.max(0, (distToMouse - turbRadius * 0.3) / (turbRadius * 0.7)))
+          : (isMouseActive ? 0 : 1);
 
+        switch (CONFIG.idleAnimationMode) {
+          case "float":
+            if (!isMouseActive) {
+              const noiseX = smoothNoise(p.originX * 0.01, p.originY * 0.01, idleTime);
+              const noiseY = smoothNoise(p.originX * 0.01 + 100, p.originY * 0.01 + 100, idleTime);
+              p.vx += noiseX * intensity;
+              p.vy += noiseY * intensity;
+            }
+            break;
+          case "turbulence": {
+            const angle = smoothNoise(p.originX * 0.005, p.originY * 0.005, idleTime * 0.5) * Math.PI * 2;
+            p.vx += Math.cos(angle) * intensity * 2 * mouseFade;
+            p.vy += Math.sin(angle) * intensity * 2 * mouseFade;
+            break;
+          }
+          case "wave":
+            if (!isMouseActive) {
+              const waveOffset = p.originX * 0.02 + idleTime * 2;
+              p.vy += Math.sin(waveOffset) * intensity * 0.5;
+              p.vx += Math.cos(waveOffset * 0.7) * intensity * 0.3;
+            }
+            break;
+          case "pulse":
+            if (!isMouseActive) {
+              const centerX = width / 2, centerY = height / 2;
+              const dx = p.originX - centerX, dy = p.originY - centerY;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const pulse = Math.sin(idleTime * 3) * intensity * 0.5;
+              p.vx += (dx / dist) * pulse;
+              p.vy += (dy / dist) * pulse;
+            }
+            break;
+        }
+      }
+` : ''}
 ${physicsCode}
 
       p.vx += (p.originX - p.x) * returnSpeed;
@@ -333,40 +564,83 @@ ${physicsCode}
       return;
     }
 
-    // Clear and render
-    ctx.clearRect(0, 0, width, height);
+    // Trails: use semi-transparent fill instead of clear
+    ${config.enableTrails ? `// Parse hex color to RGB for trails
+    const hexToRgb = (hex: string) => {
+      const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 255, g: 255, b: 255 };
+    };
+    const bgColor = hexToRgb(CONFIG.trailBackgroundColor);
+    ctx.fillStyle = \`rgba(\${bgColor.r}, \${bgColor.g}, \${bgColor.b}, \${CONFIG.trailLength})\`;
+    ctx.fillRect(0, 0, width, height);` : `ctx.clearRect(0, 0, width, height);`}
 
     // Render mode
     ${useSquaresCode}
+${config.enableConnections ? `
+    // Draw connections between nearby particles
+    const connDistSq = CONFIG.connectionDistance * CONFIG.connectionDistance;
+    const connHex = (hex: string) => {
+      const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 255, g: 255, b: 255 };
+    };
+    const connColor = connHex(CONFIG.connectionColor);
+    ctx.strokeStyle = \`rgba(\${connColor.r}, \${connColor.g}, \${connColor.b}, \${CONFIG.connectionOpacity})\`;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
 
+    const activeParticles = particlesRef.current.slice(0, particlesActivatedRef.current);
+    for (let i = 0; i < activeParticles.length; i++) {
+      const p1 = activeParticles[i];
+      for (let j = i + 1; j < Math.min(i + 50, activeParticles.length); j++) {
+        const p2 = activeParticles[j];
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < connDistSq) {
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+        }
+      }
+    }
+    ctx.stroke();
+` : ''}
     // Group particles by color for batched drawing
     const colorGroups: Map<string, Particle[]> = new Map();
     const maskedColorGroups: Map<string, Particle[]> = new Map();
 
     for (let i = 0; i < particlesActivatedRef.current; i++) {
       const p = particlesRef.current[i];
+      ${config.enableVelocityColor ? `// Calculate display color with velocity shift
+      const velocity = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      const displayColor = shiftColorByVelocity(p.color, velocity, CONFIG.velocityColorIntensity, CONFIG.velocityColorMode, CONFIG.velocityColorTarget);` : 'const displayColor = p.color;'}
       const targetMap = p.masked ? maskedColorGroups : colorGroups;
-      if (!targetMap.has(p.color)) targetMap.set(p.color, []);
-      targetMap.get(p.color)!.push(p);
+      if (!targetMap.has(displayColor)) targetMap.set(displayColor, []);
+      targetMap.get(displayColor)!.push(p);
     }
+
+    // Helper to draw a single particle shape
+    const drawShape = (x: number, y: number, size: number) => {
+      ${shapeDrawCode}
+    };
 
     // Helper to draw a group of particles
     const drawGroup = (groups: Map<string, Particle[]>) => {
       for (const [color, particles] of groups) {
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.85;
-        if (useSquares) {
-          for (const p of particles) {
-            ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
-          }
-        } else {
-          ctx.beginPath();
-          for (const p of particles) {
-            ctx.moveTo(p.x + p.size, p.y);
-            ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
-          }
-          ctx.fill();
+        ctx.beginPath();
+        for (const p of particles) {
+          drawShape(p.x, p.y, p.size);
         }
+        ctx.fill();
       }
     };
 
