@@ -779,6 +779,15 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
                     suffix="px"
                   />
                 )}
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.idleAnimationAffectsMasked}
+                    onChange={(e) => onChange({ idleAnimationAffectsMasked: e.target.checked })}
+                    className="w-4 h-4 rounded bg-gray-700 border-gray-600 accent-indigo-500"
+                  />
+                  <span className="text-sm text-gray-300">Affect masked particles</span>
+                </label>
               </>
             )}
 

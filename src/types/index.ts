@@ -71,6 +71,7 @@ export interface ParticleConfig {
   idleAnimationMode: IdleAnimationMode; // Type of idle animation
   idleAnimationSpeed: number;      // Speed of idle animation (0.1-2)
   idleAnimationIntensity: number;  // How much particles float (1-20)
+  idleAnimationAffectsMasked: boolean; // Whether idle animation affects masked particles
   turbulenceMouseRadius: number;   // Radius around mouse where turbulence fades (50-3000)
   enableVelocityColor: boolean;    // Color shift based on velocity
   velocityColorMode: VelocityColorMode; // How velocity affects color

@@ -55,6 +55,7 @@ const defaultConfig: ParticleConfig = {
   idleAnimationMode: "float",
   idleAnimationSpeed: 0.5,
   idleAnimationIntensity: 5,
+  idleAnimationAffectsMasked: false,
   turbulenceMouseRadius: 200,
   enableVelocityColor: false,
   velocityColorMode: "brighten",

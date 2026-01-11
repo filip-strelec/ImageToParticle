@@ -360,7 +360,8 @@ export default function ParticlePreview({
       }
 
       // Apply idle animation when mouse is not active (or mouse-aware modes)
-      if (config.enableIdleAnimation && isAnimationComplete) {
+      // Skip masked particles if idleAnimationAffectsMasked is disabled
+      if (config.enableIdleAnimation && isAnimationComplete && (!p.masked || config.idleAnimationAffectsMasked)) {
         const mode = config.idleAnimationMode || "float";
         const intensity = config.idleAnimationIntensity * 0.1;
 

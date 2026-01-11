@@ -386,6 +386,7 @@ const CONFIG = {
   idleAnimationMode: "${config.idleAnimationMode || 'float'}" as const,
   idleAnimationSpeed: ${config.idleAnimationSpeed},
   idleAnimationIntensity: ${config.idleAnimationIntensity},
+  idleAnimationAffectsMasked: ${config.idleAnimationAffectsMasked ?? false},
   turbulenceMouseRadius: ${config.turbulenceMouseRadius || 200},
   enableVelocityColor: ${config.enableVelocityColor},
   velocityColorMode: "${config.velocityColorMode || 'brighten'}" as const,
@@ -504,8 +505,8 @@ ${mouseInteractionCode}
         }
       }
 ${config.enableIdleAnimation ? `
-      // Apply idle animation based on mode
-      if (CONFIG.enableIdleAnimation && isAnimationComplete) {
+      // Apply idle animation based on mode (skip masked particles if disabled)
+      if (CONFIG.enableIdleAnimation && isAnimationComplete && (!p.masked || CONFIG.idleAnimationAffectsMasked)) {
         const intensity = CONFIG.idleAnimationIntensity * 0.1;
         const distToMouse = Math.sqrt((p.x - mouseX) * (p.x - mouseX) + (p.y - mouseY) * (p.y - mouseY));
         const turbRadius = CONFIG.turbulenceMouseRadius;
