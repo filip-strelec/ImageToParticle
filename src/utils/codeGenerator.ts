@@ -294,17 +294,19 @@ export function generateComponentCode(
     if (renderMode === "auto") {
       return `
     // Detect activity (animation running or mouse interaction)
-    const isMouseActive = mouse.x > -500 && mouse.y > -500;
     const isActive = !isAnimationComplete || isMouseActive;
 
     // Measure performance during activity, then lock the decision permanently
-    if (qualityModeRef.current === null && isActive && lastFrameTimeRef.current > 0) {
+    if (qualityModeRef.current === null && isActive) {
       activityFrameCountRef.current++;
-      if (frameTime > 20) slowFrameCountRef.current++;
-      // After 60 frames of activity (~1 second), decide
-      if (activityFrameCountRef.current >= 60) {
+      // Count frames slower than 25ms (< 40fps) as "slow"
+      if (frameTime > 25) slowFrameCountRef.current++;
+
+      // After 90 frames (~1.5s on 60fps), decide
+      if (activityFrameCountRef.current >= 90) {
         const slowRatio = slowFrameCountRef.current / activityFrameCountRef.current;
-        qualityModeRef.current = slowRatio > 0.3 ? "squares" : "circles";
+        // If more than 20% of frames were slow, switch to squares
+        qualityModeRef.current = slowRatio > 0.2 ? "squares" : "circles";
       }
     }
 `;
@@ -461,9 +463,10 @@ ${performanceRefs}
     const mouseRadiusSq = CONFIG.mouseRadius * CONFIG.mouseRadius;
     const pCount = particlesRef.current.length;
 
-    // Performance measurement
-    const frameTime = now - lastFrameTimeRef.current;
+    // Performance measurement (skip first frame to avoid huge frameTime)
+    const prevFrameTime = lastFrameTimeRef.current;
     lastFrameTimeRef.current = now;
+    const frameTime = prevFrameTime > 0 ? now - prevFrameTime : 16;
 
     // Update activated particles count for sequential animation
     if (CONFIG.enableInitialAnimation && particlesActivatedRef.current < pCount) {
@@ -651,8 +654,7 @@ ${config.enableConnections ? `
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // Use alpha: false for better performance and to prevent flickering on Safari/iOS
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     // Set canvas size to match image dimensions
@@ -660,10 +662,6 @@ ${config.enableConnections ? `
     canvas.width = IMG_WIDTH * dpr;
     canvas.height = IMG_HEIGHT * dpr;
     ctx.scale(dpr, dpr);
-
-    // Fill with background color initially
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, IMG_WIDTH, IMG_HEIGHT);
 
     initParticles();
 

@@ -611,8 +611,7 @@ export default function ParticlePreview({
     const canvas = canvasRef.current;
     if (!canvas || !imageData) return;
 
-    // Use alpha: false for better performance and to prevent flickering on Safari/iOS
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     // Set canvas size to match image dimensions exactly
@@ -622,10 +621,6 @@ export default function ParticlePreview({
 
     // Scale the context to handle high DPI displays
     ctx.scale(dpr, dpr);
-
-    // Fill with background color initially to prevent flash
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, imageData.width, imageData.height);
 
     initParticles();
 
