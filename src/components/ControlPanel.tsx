@@ -813,6 +813,7 @@ export default function ControlPanel({ config, onChange, onReset, imageData }: C
                     <option value="brighten">Brighten</option>
                     <option value="darken">Darken</option>
                     <option value="hue-shift">Hue Shift</option>
+                    <option value="hue-shift-colorize">Hue Shift Colorize (works on black)</option>
                     <option value="saturation">Saturation Boost</option>
                     <option value="rainbow">Rainbow (works on black)</option>
                   </select>

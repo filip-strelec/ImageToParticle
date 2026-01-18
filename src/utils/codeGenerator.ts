@@ -134,7 +134,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
-type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "saturation" | "rainbow";
+type VelocityColorMode = "brighten" | "darken" | "hue-shift" | "hue-shift-colorize" | "saturation" | "rainbow";
 
 // Store particle hue offset for rainbow mode
 const particleHueOffsets = new WeakMap<object, number>();
@@ -157,6 +157,22 @@ function shiftColorByVelocity(color: string, velocity: number, intensity: number
       const [h, s, l] = rgbToHsl(r, g, b);
       const [nr, ng, nb] = hslToRgb((h + factor * 0.01) % 1, s, l);
       return \`rgb(\${nr},\${ng},\${nb})\`;
+    }
+    case "hue-shift-colorize": {
+      // Like hue-shift but forces saturation/lightness for black/white images
+      if (velocity < 0.1) return color;
+      const [h, s, l] = rgbToHsl(r, g, b);
+      const newH = (h + factor * 0.01) % 1;
+      const blend = Math.min(factor / 30, 1);
+      const targetS = 0.8;
+      const targetL = 0.5;
+      const newS = s + (targetS - s) * blend;
+      const newL = l + (targetL - l) * blend;
+      const [nr, ng, nb] = hslToRgb(newH, newS, newL);
+      const fr = Math.round(r + (nr - r) * blend);
+      const fg = Math.round(g + (ng - g) * blend);
+      const fb = Math.round(b + (nb - b) * blend);
+      return \`rgb(\${fr},\${fg},\${fb})\`;
     }
     case "saturation": {
       const [h, s, l] = rgbToHsl(r, g, b);

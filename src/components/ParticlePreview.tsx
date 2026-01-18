@@ -112,6 +112,30 @@ function shiftColorByVelocity(
       const [nr, ng, nb] = hslToRgb(newH, s, l);
       return `rgb(${nr},${ng},${nb})`;
     }
+    case "hue-shift-colorize": {
+      // Like hue-shift but forces minimum saturation and lightness
+      // This makes it work on black/white/grayscale images
+      // Only colorizes based on velocity - at rest, keeps original color
+      if (velocity < 0.1) {
+        return color; // No movement, keep original color
+      }
+      const [h, s, l] = rgbToHsl(r, g, b);
+      const newH = (h + factor * 0.01) % 1;
+      // Blend amount based on velocity (0 = original, 1 = fully colorized)
+      const blend = Math.min(factor / 30, 1);
+      // Target saturation and lightness for colorization
+      const targetS = 0.8;
+      const targetL = 0.5;
+      // Interpolate from original to colorized based on velocity
+      const newS = s + (targetS - s) * blend;
+      const newL = l + (targetL - l) * blend;
+      const [nr, ng, nb] = hslToRgb(newH, newS, newL);
+      // Blend the final RGB with original color based on velocity
+      const fr = Math.round(r + (nr - r) * blend);
+      const fg = Math.round(g + (ng - g) * blend);
+      const fb = Math.round(b + (nb - b) * blend);
+      return `rgb(${fr},${fg},${fb})`;
+    }
     case "saturation": {
       const [h, s, l] = rgbToHsl(r, g, b);
       const newS = Math.min(1, s + factor * 0.01);
